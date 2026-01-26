@@ -1598,7 +1598,7 @@ app.use((err, req, res, next) => {
 // Start server
 app.listen(PORT, '0.0.0.0', () => {
     console.log('\n' + '='.repeat(50));
-    console.log('🚀 Servidor de Servicios Informáticos iniciado');
+    console.log('🚀 Gestión de incidencias FONT MULTISERVEIS Y PLAZERO iniciado');
     console.log('='.repeat(50));
     console.log(`📍 URL: http://localhost:${PORT}`);
     console.log(`📊 Panel Admin: http://localhost:${PORT}/admin`);

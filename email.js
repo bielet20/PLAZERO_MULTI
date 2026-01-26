@@ -19,7 +19,7 @@ const sendTicketConfirmation = async (ticketData, servicios, prioridades) => {
     const mailOptions = {
         from: process.env.EMAIL_FROM,
         to: ticketData.email,
-        subject: `Confirmación de Ticket ${ticketData.ticketId} - Servicios Informáticos`,
+        subject: `Confirmación de Ticket ${ticketData.ticketId} - FONT MULTISERVEIS Y PLAZERO`,
         html: `
             <!DOCTYPE html>
             <html>
@@ -107,7 +107,7 @@ const sendTicketConfirmation = async (ticketData, servicios, prioridades) => {
                         <p style="margin-top: 30px;"><em>Guarde este número de ticket para futuras consultas: <strong>${ticketData.ticketId}</strong></em></p>
                     </div>
                     <div class="footer">
-                        <p><strong>${process.env.COMPANY_NAME || 'Servicios Informáticos Profesionales'}</strong></p>
+                        <p><strong>${process.env.COMPANY_NAME || 'FONT MULTISERVEIS Y PLAZERO'}</strong></p>
                         <p>Este es un mensaje automático, por favor no responda a este correo.</p>
                     </div>
                 </div>
