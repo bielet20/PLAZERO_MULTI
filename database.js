@@ -1151,65 +1151,6 @@ const transferirTicketEmpresa = (ticketId, nuevaEmpresaId) => {
     });
 };
 
-module.exports = {
-    db,
-    initDatabase,
-    createTicket,
-    getAllTickets,
-    getArchivedTickets,
-    getTicketById,
-    updateTicketStatus,
-    updateTicket,
-    archiveTicket,
-    restoreTicket,
-    deleteTicket,
-    getTicketsByStatus,
-    addNoteToTicket,
-    archiveNote,
-    restoreNote,
-    deleteNote,
-    getTicketNotes,
-    assignTechnician,
-    registerWhatsAppContact,
-    getWhatsAppContacts,
-    getAllServices,
-    createService,
-    updateService,
-    deleteService,
-    getAllUsers,
-    getUserByUsername,
-    createUser,
-    updateUser,
-    updateUserLastAccess,
-    deleteUser,
-    addHorasTrabajo,
-    getHorasTrabajo,
-    getTotalHorasTicket,
-    getHorasPorTecnico,
-    updateHorasTrabajo,
-    deleteHorasTrabajo,
-    // Materiales
-    getAllMaterials,
-    getMaterialById,
-    createMaterial,
-    updateMaterial,
-    deleteMaterial,
-    addMaterialToTicket,
-    getMaterialsForTicket,
-    removeMaterialFromTicket,
-    // Facturación
-    createInvoice,
-    getInvoiceById,
-    getInvoicesByTicketId,
-    // Empresas
-    getAllEmpresas,
-    getEmpresaById,
-    createEmpresa,
-    updateEmpresa,
-    deleteEmpresa,
-    transferirTicketEmpresa
-};
-
 // ==================== FACTURACIÓN MULTI-TICKET ====================
 
 const createMultiTicketInvoice = (invoiceData) => {
@@ -1300,8 +1241,11 @@ module.exports = {
     restoreTicket,
     deleteTicket,
     // Notas
-    addNote,
-    getNotes,
+    addNoteToTicket,
+    archiveNote,
+    restoreNote,
+    deleteNote,
+    getTicketNotes,
     // Horas de trabajo
     addHorasTrabajo,
     getHorasTrabajo,
