@@ -64,6 +64,8 @@ const {
     createInvoice,
     getInvoiceById,
     getInvoicesByTicketId,
+    createMultiTicketInvoice,
+    getTicketsForInvoice,
     // Empresas
     getAllEmpresas,
     getEmpresaById,
@@ -954,6 +956,68 @@ app.post('/api/tickets/:ticketId/invoices', requireAuth, requireAdmin, csrfProte
     } catch (error) {
         console.error('Error creando factura:', error);
         res.status(500).json({ error: 'Error interno al crear la factura.' });
+    }
+});
+
+// Create multi-ticket invoice
+app.post('/api/invoices/multi-ticket', requireAuth, requireAdmin, csrfProtection, async (req, res) => {
+    try {
+        const { ticket_ids, cliente_nombre, cliente_email, fecha_vencimiento, items, empresa_id } = req.body;
+
+        if (!ticket_ids || ticket_ids.length === 0) {
+            return res.status(400).json({ error: 'Se requiere al menos un ticket' });
+        }
+
+        if (!cliente_nombre || !items || items.length === 0) {
+            return res.status(400).json({ error: 'Datos incompletos para la factura' });
+        }
+
+        // Calculate totals
+        let subtotal = 0;
+        for (const item of items) {
+            subtotal += item.total || 0;
+        }
+        
+        const iva_percent = 21;
+        const iva = subtotal * (iva_percent / 100);
+        const total = subtotal + iva;
+
+        const invoiceData = {
+            ticket_ids,
+            cliente_nombre,
+            cliente_email,
+            fecha_vencimiento,
+            subtotal,
+            iva,
+            total,
+            items,
+            empresa_id
+        };
+
+        const result = await createMultiTicketInvoice(invoiceData);
+
+        res.status(201).json({
+            success: true,
+            message: 'Factura multi-ticket creada exitosamente',
+            invoiceId: result.invoiceId,
+            ticketCount: result.ticketCount
+        });
+
+    } catch (error) {
+        console.error('Error creando factura multi-ticket:', error);
+        res.status(500).json({ error: 'Error interno al crear la factura.' });
+    }
+});
+
+// Get tickets for invoice creation
+app.post('/api/invoices/tickets-summary', requireAuth, csrfProtection, async (req, res) => {
+    try {
+        const { ticket_ids } = req.body;
+        const tickets = await getTicketsForInvoice(ticket_ids);
+        res.json(tickets);
+    } catch (error) {
+        console.error('Error fetching tickets:', error);
+        res.status(500).json({ error: 'Error al obtener información de tickets' });
     }
 });
 

@@ -567,6 +567,262 @@ let allTickets = [];
             }
         }
 
+        // ==================== FACTURACIÓN PANEL ====================
+
+        function toggleFacturacionPanel() {
+            const panel = document.getElementById('facturacionPanel');
+            const isVisible = panel.style.display === 'block';
+            panel.style.display = isVisible ? 'none' : 'block';
+            if (!isVisible) {
+                showFacturacionForm();
+            }
+        }
+
+        async function showFacturacionForm() {
+            const content = document.getElementById('facturacionContent');
+            
+            // Load all active tickets
+            try {
+                const response = await fetch('/api/tickets');
+                const tickets = await response.json();
+                const activeTickets = tickets.filter(t => t.estado !== 'completado');
+
+                content.innerHTML = `
+                    <div style="background: #f9fafb; padding: 1.5rem; border-radius: 10px;">
+                        <h3 style="margin-bottom: 1rem;">Seleccionar Tickets para Facturación</h3>
+                        
+                        <div id="ticketsCheckboxList" style="max-height: 300px; overflow-y: auto; border: 1px solid #e5e7eb; border-radius: 8px; padding: 1rem; margin-bottom: 1.5rem;">
+                            ${activeTickets.map(ticket => `
+                                <label style="display: flex; align-items: center; padding: 0.5rem; cursor: pointer; border-radius: 5px; hover: background #f0f0f0;">
+                                    <input type="checkbox" class="ticket-checkbox" value="${ticket.ticket_id}" data-cliente="${ticket.nombre}" data-email="${ticket.email}">
+                                    <span style="margin-left: 0.5rem; flex: 1;">
+                                        <strong>${ticket.ticket_id}</strong> - ${ticket.nombre} (${ticket.email})
+                                    </span>
+                                </label>
+                            `).join('')}
+                        </div>
+
+                        <button onclick="generateInvoicePreview()" class="btn" style="background: #10b981; padding: 0.75rem 1.5rem; width: 100%; cursor: pointer;">
+                            <i class="fas fa-arrow-right"></i> Siguiente: Ver Detalles
+                        </button>
+                    </div>
+                `;
+            } catch (error) {
+                content.innerHTML = `<div style="color: red;">Error al cargar tickets: ${error.message}</div>`;
+            }
+        }
+
+        async function generateInvoicePreview() {
+            const checkboxes = document.querySelectorAll('.ticket-checkbox:checked');
+            const ticketIds = Array.from(checkboxes).map(cb => cb.value);
+            
+            if (ticketIds.length === 0) {
+                alert('Por favor selecciona al menos un ticket');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/invoices/tickets-summary', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'csrf-token': csrfToken
+                    },
+                    body: JSON.stringify({ ticket_ids: ticketIds })
+                });
+
+                const tickets = await response.json();
+                showInvoiceEditor(tickets, ticketIds);
+            } catch (error) {
+                alert('Error: ' + error.message);
+            }
+        }
+
+        function showInvoiceEditor(tickets, ticketIds) {
+            const content = document.getElementById('facturacionContent');
+            
+            let totalHoras = 0;
+            let totalMateriales = 0;
+            let htmlItems = '';
+
+            tickets.forEach(ticket => {
+                totalHoras += parseFloat(ticket.total_horas) || 0;
+                totalMateriales += parseFloat(ticket.total_materiales) || 0;
+                
+                htmlItems += `
+                    <tr style="border-bottom: 1px solid #e5e7eb;">
+                        <td style="padding: 0.75rem;">${ticket.ticket_id}</td>
+                        <td style="padding: 0.75rem;">${ticket.nombre}</td>
+                        <td style="padding: 0.75rem;">
+                            <input type="number" class="item-horas-oficiales" data-ticket="${ticket.ticket_id}" placeholder="0" style="width: 60px; padding: 0.3rem; border: 1px solid #ddd; border-radius: 4px;">
+                            <small style="color: #666;"> h. oficial</small>
+                        </td>
+                        <td style="padding: 0.75rem;">
+                            <input type="number" class="item-horas-ayudante" data-ticket="${ticket.ticket_id}" placeholder="0" style="width: 60px; padding: 0.3rem; border: 1px solid #ddd; border-radius: 4px;">
+                            <small style="color: #666;"> h. ayudante</small>
+                        </td>
+                        <td style="padding: 0.75rem;">
+                            <input type="number" class="item-precio-oficial" data-ticket="${ticket.ticket_id}" placeholder="0.00" style="width: 70px; padding: 0.3rem; border: 1px solid #ddd; border-radius: 4px;">
+                            <small style="color: #666;"> €/h</small>
+                        </td>
+                        <td style="padding: 0.75rem;">
+                            <input type="number" class="item-precio-ayudante" data-ticket="${ticket.ticket_id}" placeholder="0.00" style="width: 70px; padding: 0.3rem; border: 1px solid #ddd; border-radius: 4px;">
+                            <small style="color: #666;"> €/h</small>
+                        </td>
+                        <td style="padding: 0.75rem; text-align: right;">
+                            <span class="item-subtotal" data-ticket="${ticket.ticket_id}">0.00 €</span>
+                        </td>
+                    </tr>
+                `;
+            });
+
+            const firstTicket = tickets[0];
+            
+            content.innerHTML = `
+                <div style="background: #f9fafb; padding: 1.5rem; border-radius: 10px;">
+                    <h3 style="margin-bottom: 1rem;">Editor de Factura</h3>
+                    
+                    <form onsubmit="event.preventDefault(); procesarFactura('${ticketIds.join("','")}');">
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1.5rem;">
+                            <div>
+                                <label>Cliente</label>
+                                <input type="text" id="invoiceCliente" value="${firstTicket.nombre}" required style="width: 100%; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px;">
+                            </div>
+                            <div>
+                                <label>Email</label>
+                                <input type="email" id="invoiceEmail" value="${firstTicket.email}" required style="width: 100%; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px;">
+                            </div>
+                        </div>
+
+                        <div style="margin-bottom: 1.5rem;">
+                            <h4 style="margin-bottom: 1rem;">Detalles por Ticket</h4>
+                            <table style="width: 100%; border-collapse: collapse; font-size: 0.9rem;">
+                                <thead style="background: #e5e7eb;">
+                                    <tr>
+                                        <th style="padding: 0.75rem; text-align: left;">Ticket</th>
+                                        <th style="padding: 0.75rem; text-align: left;">Cliente</th>
+                                        <th style="padding: 0.75rem; text-align: left;">H. Oficial</th>
+                                        <th style="padding: 0.75rem; text-align: left;">H. Ayudante</th>
+                                        <th style="padding: 0.75rem; text-align: left;">€ Oficial</th>
+                                        <th style="padding: 0.75rem; text-align: left;">€ Ayudante</th>
+                                        <th style="padding: 0.75rem; text-align: right;">Subtotal</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="invoiceItemsBody">
+                                    ${htmlItems}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div style="background: #f0f9ff; padding: 1rem; border-radius: 8px; margin-bottom: 1.5rem; border-left: 4px solid #3b82f6;">
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                                <div>
+                                    <p style="color: #666; font-size: 0.9rem;">Total Horas Detectadas</p>
+                                    <p style="font-size: 1.3rem; font-weight: bold;">${totalHoras.toFixed(2)} h</p>
+                                </div>
+                                <div>
+                                    <p style="color: #666; font-size: 0.9rem;">Total Materiales Detectados</p>
+                                    <p style="font-size: 1.3rem; font-weight: bold;">${totalMateriales.toFixed(2)} €</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div style="display: flex; gap: 1rem;">
+                            <button type="button" onclick="toggleFacturacionPanel()" class="btn" style="background: #6b7280; flex: 1; padding: 0.75rem;">Cancelar</button>
+                            <button type="submit" class="btn" style="background: #10b981; flex: 1; padding: 0.75rem;">
+                                <i class="fas fa-check"></i> Generar Factura
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            `;
+
+            // Add event listeners for calculations
+            document.querySelectorAll('.item-horas-oficiales, .item-horas-ayudante, .item-precio-oficial, .item-precio-ayudante').forEach(input => {
+                input.addEventListener('change', recalcularSubtotal);
+            });
+        }
+
+        function recalcularSubtotal() {
+            document.querySelectorAll('.item-subtotal').forEach(elem => {
+                const ticketId = elem.dataset.ticket;
+                const horasOficial = parseFloat(document.querySelector(`.item-horas-oficiales[data-ticket="${ticketId}"]`).value) || 0;
+                const horasAyudante = parseFloat(document.querySelector(`.item-horas-ayudante[data-ticket="${ticketId}"]`).value) || 0;
+                const precioOficial = parseFloat(document.querySelector(`.item-precio-oficial[data-ticket="${ticketId}"]`).value) || 0;
+                const precioAyudante = parseFloat(document.querySelector(`.item-precio-ayudante[data-ticket="${ticketId}"]`).value) || 0;
+
+                const subtotal = (horasOficial * precioOficial) + (horasAyudante * precioAyudante);
+                elem.textContent = subtotal.toFixed(2) + ' €';
+            });
+        }
+
+        async function procesarFactura(ticketIds) {
+            const cliente = document.getElementById('invoiceCliente').value;
+            const email = document.getElementById('invoiceEmail').value;
+            
+            if (!cliente || !email) {
+                alert('Por favor completa los datos del cliente');
+                return;
+            }
+
+            const items = [];
+            document.querySelectorAll('.item-subtotal').forEach(elem => {
+                const ticketId = elem.dataset.ticket;
+                const horasOficial = parseFloat(document.querySelector(`.item-horas-oficiales[data-ticket="${ticketId}"]`).value) || 0;
+                const horasAyudante = parseFloat(document.querySelector(`.item-horas-ayudante[data-ticket="${ticketId}"]`).value) || 0;
+                const precioOficial = parseFloat(document.querySelector(`.item-precio-oficial[data-ticket="${ticketId}"]`).value) || 0;
+                const precioAyudante = parseFloat(document.querySelector(`.item-precio-ayudante[data-ticket="${ticketId}"]`).value) || 0;
+
+                const subtotal = (horasOficial * precioOficial) + (horasAyudante * precioAyudante);
+                
+                if (horasOficial > 0 || horasAyudante > 0) {
+                    items.push({
+                        concepto: 'Servicios profesionales',
+                        descripcion: `${ticketId} - Oficial: ${horasOficial}h, Ayudante: ${horasAyudante}h`,
+                        cantidad: 1,
+                        precio_unitario: subtotal,
+                        total: subtotal
+                    });
+                }
+            });
+
+            if (items.length === 0) {
+                alert('Por favor ingresa al menos una línea de factura');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/invoices/multi-ticket', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'csrf-token': csrfToken
+                    },
+                    body: JSON.stringify({
+                        ticket_ids: ticketIds.split(','),
+                        cliente_nombre: cliente,
+                        cliente_email: email,
+                        fecha_vencimiento: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+                        items: items,
+                        empresa_id: null
+                    })
+                });
+
+                const result = await response.json();
+                
+                if (response.ok) {
+                    alert(`Factura ${result.invoiceId} creada exitosamente con ${result.ticketCount} ticket(s)`);
+                    toggleFacturacionPanel();
+                    loadTickets();
+                } else {
+                    alert('Error: ' + (result.error || 'Error desconocido'));
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Error al procesar factura: ' + error.message);
+            }
+        }
+
         // ==================== EMPRESAS PANEL ====================
 
         function toggleEmpresasPanel() {

@@ -262,6 +262,25 @@ const initDatabase = () => {
                 else console.log('✓ Tabla de factura_items creada/verificada');
             });
 
+            // Create factura_tickets table (relación muchos a muchos)
+            db.run(`
+                CREATE TABLE IF NOT EXISTS factura_tickets (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    factura_id TEXT NOT NULL,
+                    ticket_id TEXT NOT NULL,
+                    tipo_trabajo TEXT DEFAULT 'servicio', -- oficial, ayudante, servicio
+                    horas_oficiales REAL DEFAULT 0,
+                    horas_ayudante REAL DEFAULT 0,
+                    precio_oficial REAL DEFAULT 0,
+                    precio_ayudante REAL DEFAULT 0,
+                    FOREIGN KEY (factura_id) REFERENCES facturas(factura_id),
+                    FOREIGN KEY (ticket_id) REFERENCES tickets(ticket_id)
+                )
+            `, (err) => {
+                if (err) console.error('Error creating factura_tickets table:', err);
+                else console.log('✓ Tabla de factura_tickets creada/verificada');
+            });
+
             // Insert default services if table is empty
             db.get('SELECT COUNT(*) as count FROM servicios', (err, row) => {
                 if (!err && row.count === 0) {
@@ -1182,6 +1201,140 @@ module.exports = {
     createInvoice,
     getInvoiceById,
     getInvoicesByTicketId,
+    // Empresas
+    getAllEmpresas,
+    getEmpresaById,
+    createEmpresa,
+    updateEmpresa,
+    deleteEmpresa,
+    transferirTicketEmpresa
+};
+
+// ==================== FACTURACIÓN MULTI-TICKET ====================
+
+const createMultiTicketInvoice = (invoiceData) => {
+    return new Promise((resolve, reject) => {
+        const invoiceId = generateInvoiceId();
+        const { ticket_ids, cliente_nombre, cliente_email, fecha_vencimiento, subtotal, iva, total, items, empresa_id } = invoiceData;
+
+        db.serialize(() => {
+            db.run('BEGIN TRANSACTION');
+
+            const invoiceSql = `
+                INSERT INTO facturas (factura_id, ticket_id, cliente_nombre, cliente_email, fecha_vencimiento, subtotal, iva, total, empresa_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `;
+            db.run(invoiceSql, [invoiceId, ticket_ids[0], cliente_nombre, cliente_email, fecha_vencimiento, subtotal, iva, total, empresa_id || null], function(err) {
+                if (err) {
+                    db.run('ROLLBACK');
+                    return reject(err);
+                }
+
+                // Insert factura_items
+                const itemSql = `
+                    INSERT INTO factura_items (factura_id, concepto, descripcion, cantidad, precio_unitario, total)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                `;
+                const stmt = db.prepare(itemSql);
+                for (const item of items) {
+                    stmt.run(invoiceId, item.concepto, item.descripcion, item.cantidad, item.precio_unitario, item.total);
+                }
+                stmt.finalize((err) => {
+                    if (err) {
+                        db.run('ROLLBACK');
+                        return reject(err);
+                    }
+
+                    // Insert factura_tickets (relación)
+                    const relSql = `INSERT INTO factura_tickets (factura_id, ticket_id) VALUES (?, ?)`;
+                    const relStmt = db.prepare(relSql);
+                    for (const ticketId of ticket_ids) {
+                        relStmt.run(invoiceId, ticketId);
+                    }
+                    relStmt.finalize((err) => {
+                        if (err) {
+                            db.run('ROLLBACK');
+                            return reject(err);
+                        }
+                        db.run('COMMIT');
+                        resolve({ id: this.lastID, invoiceId, ticketCount: ticket_ids.length });
+                    });
+                });
+            });
+        });
+    });
+};
+
+const getTicketsForInvoice = (ticketIds) => {
+    return new Promise((resolve, reject) => {
+        if (!ticketIds || ticketIds.length === 0) return resolve([]);
+        
+        const placeholders = ticketIds.map(() => '?').join(',');
+        const sql = `
+            SELECT t.*, 
+                   COALESCE(SUM(h.horas), 0) as total_horas,
+                   COALESCE(SUM(m.subtotal), 0) as total_materiales
+            FROM tickets t
+            LEFT JOIN horas_trabajo h ON t.ticket_id = h.ticket_id
+            LEFT JOIN ticket_materiales m ON t.ticket_id = m.ticket_id
+            WHERE t.ticket_id IN (${placeholders})
+            GROUP BY t.ticket_id
+        `;
+        db.all(sql, ticketIds, (err, rows) => {
+            if (err) reject(err);
+            else resolve(rows || []);
+        });
+    });
+};
+
+module.exports = {
+    db,
+    initDatabase,
+    // Tickets
+    getAllTickets,
+    getTicketById,
+    getArchivedTickets,
+    createTicket,
+    updateTicket,
+    archiveTicket,
+    restoreTicket,
+    deleteTicket,
+    // Notas
+    addNote,
+    getNotes,
+    // Horas de trabajo
+    addHorasTrabajo,
+    getHorasTrabajo,
+    getTotalHorasTicket,
+    getHorasPorTecnico,
+    updateHorasTrabajo,
+    deleteHorasTrabajo,
+    // Servicios
+    getAllServices,
+    createService,
+    updateService,
+    deleteService,
+    getAllUsers,
+    getUserByUsername,
+    createUser,
+    updateUser,
+    updateUserLastAccess,
+    deleteUser,
+    // Materiales
+    getAllMaterials,
+    getMaterialById,
+    createMaterial,
+    updateMaterial,
+    deleteMaterial,
+    addMaterialToTicket,
+    getMaterialsForTicket,
+    removeMaterialFromTicket,
+    // Facturación
+    createInvoice,
+    getInvoiceById,
+    getInvoicesByTicketId,
+    createMultiTicketInvoice,
+    getTicketsForInvoice,
     // Empresas
     getAllEmpresas,
     getEmpresaById,

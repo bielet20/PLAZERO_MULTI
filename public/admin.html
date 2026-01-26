@@ -16,6 +16,9 @@
                     <button onclick="toggleBackupsPanel()" class="header-btn">
                         <i class="fas fa-database"></i> Backups
                     </button>
+                    <button onclick="toggleFacturacionPanel()" class="header-btn">
+                        <i class="fas fa-file-invoice-dollar"></i> Facturación
+                    </button>
                     <button onclick="toggleEmpresasPanel()" class="header-btn">
                         <i class="fas fa-building"></i> Empresas
                     </button>
@@ -334,6 +337,18 @@
                     </tbody>
                 </table>
             </div>
+        </div>
+
+        <!-- Facturación Panel -->
+        <div class="users-panel" id="facturacionPanel" style="display: none;">
+            <div class="users-header" style="background: linear-gradient(135deg, #10b981, #059669);">
+                <div>
+                    <h2><i class="fas fa-file-invoice-dollar"></i> Crear Factura Multi-Ticket</h2>
+                    <p>Genere facturas con múltiples tickets y edite detalles antes de procesar</p>
+                </div>
+                <button onclick="toggleFacturacionPanel()" class="close-panel">✕</button>
+            </div>
+            <div id="facturacionContent" style="padding: 1.5rem; max-height: 600px; overflow-y: auto;"></div>
         </div>
 
         <!-- Empresas Panel -->
