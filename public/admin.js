@@ -2177,7 +2177,7 @@ let allTickets = [];
                         'Content-Type': 'application/json',
                         'csrf-token': csrfToken
                     },
-                    body: JSON.stringify({ nuevaEmpresaId: parseInt(nuevaEmpresaId) })
+                    body: JSON.stringify({ empresa_id: parseInt(nuevaEmpresaId) })
                 });
                 
                 const result = await response.json();
