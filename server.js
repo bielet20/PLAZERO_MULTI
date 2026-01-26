@@ -331,8 +331,8 @@ app.post('/api/tickets', csrfProtection, async (req, res) => {
             success: true,
             ticketId: result.ticketId,
             message: 'Ticket creado exitosamente',
-            whatsappUrl: `https://wa.me/34${process.env.COMPANY_PHONE || '624620893'}?text=Hola,%20tengo%20el%20ticket%20${result.ticketId}%20y%20necesito%20información`,
-            telefono: process.env.COMPANY_PHONE || '624620893'
+            whatsappUrl: `https://wa.me/34${process.env.COMPANY_PHONE || '654892803'}?text=Hola,%20tengo%20el%20ticket%20${result.ticketId}%20y%20necesito%20información`,
+            telefono: process.env.COMPANY_PHONE || '654892803'
         });
 
     } catch (error) {

@@ -78,9 +78,9 @@ ticketForm.addEventListener('submit', async (e) => {
 
         if (response.ok) {
             // Crear múltiples enlaces de WhatsApp
-            const whatsappConsulta = `https://wa.me/34624620893?text=Hola,%20tengo%20el%20ticket%20${data.ticketId}%20y%20necesito%20consultar%20el%20estado`;
-            const whatsappCierre = `https://wa.me/34624620893?text=Hola,%20tengo%20el%20ticket%20${data.ticketId}%20y%20ya%20está%20resuelto.%20Por%20favor,%20pueden%20cerrarlo`;
-            const whatsappGeneral = `https://wa.me/34624620893?text=Hola,%20tengo%20una%20consulta%20sobre%20mi%20ticket%20${data.ticketId}`;
+            const whatsappConsulta = `https://wa.me/34654892803?text=Hola,%20tengo%20el%20ticket%20${data.ticketId}%20y%20necesito%20consultar%20el%20estado`;
+            const whatsappCierre = `https://wa.me/34654892803?text=Hola,%20tengo%20el%20ticket%20${data.ticketId}%20y%20ya%20está%20resuelto.%20Por%20favor,%20pueden%20cerrarlo`;
+            const whatsappGeneral = `https://wa.me/34654892803?text=Hola,%20tengo%20una%20consulta%20sobre%20mi%20ticket%20${data.ticketId}`;
             
             mensaje.className = 'mensaje exito';
             mensaje.innerHTML = `

@@ -89,15 +89,15 @@ const sendTicketConfirmation = async (ticketData, servicios, prioridades) => {
                             <p style="color: white; margin-bottom: 20px;">Use WhatsApp para consultas rápidas sobre su ticket</p>
                             
                             <div style="display: grid; gap: 10px; max-width: 400px; margin: 0 auto;">
-                                <a href="https://wa.me/34${process.env.COMPANY_PHONE || '624620893'}?text=Hola,%20tengo%20el%20ticket%20${ticketData.ticketId}%20y%20necesito%20consultar%20el%20estado" 
+                                <a href="https://wa.me/34${process.env.COMPANY_PHONE || '654892803'}?text=Hola,%20tengo%20el%20ticket%20${ticketData.ticketId}%20y%20necesito%20consultar%20el%20estado" 
                                    style="background: white; color: #128c7e; font-weight: bold; text-decoration: none; display: block; padding: 12px 20px; border-radius: 8px; margin: 5px 0;">
                                     📊 Consultar Estado
                                 </a>
-                                <a href="https://wa.me/34${process.env.COMPANY_PHONE || '624620893'}?text=Hola,%20mi%20ticket%20${ticketData.ticketId}%20ya%20está%20resuelto.%20Por%20favor,%20pueden%20cerrarlo" 
+                                <a href="https://wa.me/34${process.env.COMPANY_PHONE || '654892803'}?text=Hola,%20mi%20ticket%20${ticketData.ticketId}%20ya%20está%20resuelto.%20Por%20favor,%20pueden%20cerrarlo" 
                                    style="background: rgba(255,255,255,0.9); color: #128c7e; font-weight: bold; text-decoration: none; display: block; padding: 12px 20px; border-radius: 8px; margin: 5px 0;">
                                     ✅ Solicitar Cierre
                                 </a>
-                                <a href="https://wa.me/34${process.env.COMPANY_PHONE || '624620893'}?text=Hola,%20tengo%20una%20consulta%20sobre%20mi%20ticket%20${ticketData.ticketId}" 
+                                <a href="https://wa.me/34${process.env.COMPANY_PHONE || '654892803'}?text=Hola,%20tengo%20una%20consulta%20sobre%20mi%20ticket%20${ticketData.ticketId}" 
                                    style="background: rgba(255,255,255,0.8); color: #128c7e; font-weight: bold; text-decoration: none; display: block; padding: 12px 20px; border-radius: 8px; margin: 5px 0;">
                                     💬 Consulta General
                                 </a>
