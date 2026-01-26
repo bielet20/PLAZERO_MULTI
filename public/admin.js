@@ -1210,7 +1210,7 @@ let allTickets = [];
                         </div>
                     </div>
                     
-                    <div class="notes-section" style="border-top: 2px solid #3b82f6; background: #eff6ff;">
+                    <div class="notes-section" style="border-top: 2px solid #000000; background: #eff6ff;">
                         <h3><i class="fas fa-comment"></i> Notas Internas</h3>
                         <div style="max-height: 300px; overflow-y: auto; margin-top: 1rem;">
                             ${notesHtml}

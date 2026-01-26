@@ -192,7 +192,7 @@
             transition: all 0.3s;
         }
 
-        .btn-view { background: #3b82f6; color: white; }
+        .btn-view { background: #000000; color: white; }
         .btn-view:hover { background: #2563eb; }
 
         .btn-edit { background: #f59e0b; color: white; }
@@ -261,7 +261,7 @@
         .form-group select:focus,
         .form-group textarea:focus {
             outline: none;
-            border-color: #3b82f6;
+            border-color: #000000;
             box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
         }
 
