@@ -36,13 +36,18 @@ if ! command -v docker &> /dev/null; then
 fi
 
 # Verificar si Docker Compose está instalado
-if ! command -v docker-compose &> /dev/null && ! docker compose version &> /dev/null; then
+DC_CMD=""
+if command -v docker-compose &> /dev/null; then
+    DC_CMD="docker-compose"
+elif docker compose version &> /dev/null; then
+    DC_CMD="docker compose"
+else
     echo -e "${RED}❌ Error: Docker Compose no está instalado${NC}"
     echo "Por favor instala Docker Compose primero"
     exit 1
 fi
 
-echo -e "${BLUE}✓ Docker y Docker Compose detectados${NC}"
+echo -e "${BLUE}✓ Docker y Docker Compose detectados (Usando: $DC_CMD)${NC}"
 echo ""
 
 # Generar credenciales automáticamente
@@ -95,17 +100,17 @@ echo -e "${GREEN}✓ Archivo .env creado${NC}"
 # Detener contenedores existentes si los hay
 echo ""
 echo -e "${YELLOW}🛑 Deteniendo contenedores existentes (si los hay)...${NC}"
-docker-compose down 2>/dev/null || true
+$DC_CMD down 2>/dev/null || true
 
 # Construir imagen
 echo ""
 echo -e "${YELLOW}🔨 Construyendo imagen Docker...${NC}"
-docker-compose build --no-cache
+$DC_CMD build --no-cache
 
 # Iniciar contenedores
 echo ""
 echo -e "${YELLOW}🚀 Iniciando contenedores...${NC}"
-docker-compose up -d
+$DC_CMD up -d
 
 # Esperar a que la aplicación esté lista
 echo ""
@@ -113,11 +118,11 @@ echo -e "${YELLOW}⏳ Esperando a que la aplicación esté lista...${NC}"
 sleep 10
 
 # Verificar que el contenedor está corriendo
-if docker-compose ps | grep -q "Up"; then
+if $DC_CMD ps | grep -q "Up"; then
     echo -e "${GREEN}✓ Contenedores iniciados correctamente${NC}"
 else
     echo -e "${RED}❌ Error al iniciar contenedores${NC}"
-    echo "Revisa los logs con: docker-compose logs"
+    echo "Revisa los logs con: $DC_CMD logs"
     exit 1
 fi
 
@@ -141,16 +146,16 @@ echo -e "${RED}⚠️  GUARDA ESTAS CREDENCIALES EN UN LUGAR SEGURO${NC}"
 echo ""
 echo -e "${BLUE}📱 WhatsApp Web:${NC}"
 echo -e "   Para conectar WhatsApp, ejecuta:"
-echo -e "   ${GREEN}docker-compose logs -f${NC}"
+echo -e "   ${GREEN}$DC_CMD logs -f${NC}"
 echo ""
 echo -e "   Verás un código QR que debes escanear con WhatsApp"
 echo -e "   desde tu teléfono (WhatsApp > Dispositivos vinculados)"
 echo ""
 echo -e "${BLUE}📊 Comandos útiles:${NC}"
-echo -e "   Ver logs:         ${GREEN}docker-compose logs -f${NC}"
-echo -e "   Detener:          ${GREEN}docker-compose stop${NC}"
-echo -e "   Reiniciar:        ${GREEN}docker-compose restart${NC}"
-echo -e "   Ver estado:       ${GREEN}docker-compose ps${NC}"
+echo -e "   Ver logs:         ${GREEN}$DC_CMD logs -f${NC}"
+echo -e "   Detener:          ${GREEN}$DC_CMD stop${NC}"
+echo -e "   Reiniciar:        ${GREEN}$DC_CMD restart${NC}"
+echo -e "   Ver estado:       ${GREEN}$DC_CMD ps${NC}"
 echo -e "   Ejecutar script:  ${GREEN}./deploy.sh [comando]${NC}"
 echo ""
 echo "================================================"
@@ -165,5 +170,5 @@ if [[ $REPLY =~ ^[SsYy]$ ]]; then
     echo -e "${BLUE}Mostrando logs... (Presiona Ctrl+C para salir)${NC}"
     echo ""
     sleep 2
-    docker-compose logs -f
+    $DC_CMD logs -f
 fi

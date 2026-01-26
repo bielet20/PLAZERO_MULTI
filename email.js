@@ -13,24 +13,8 @@ const createTransporter = () => {
 };
 
 // Send ticket confirmation to client
-const sendTicketConfirmation = async (ticketData) => {
+const sendTicketConfirmation = async (ticketData, servicios, prioridades) => {
     const transporter = createTransporter();
-    
-    const servicios = {
-        'reparacion': 'Reparación de Equipos',
-        'redes': 'Montaje de Redes',
-        'impresoras': 'Soporte de Impresoras',
-        'seguridad': 'Seguridad Informática',
-        'errores': 'Detección de Errores',
-        'soporte': 'Soporte Técnico General'
-    };
-
-    const prioridades = {
-        'baja': 'Baja',
-        'media': 'Media',
-        'alta': 'Alta',
-        'urgente': 'Urgente'
-    };
 
     const mailOptions = {
         from: process.env.EMAIL_FROM,
@@ -136,17 +120,8 @@ const sendTicketConfirmation = async (ticketData) => {
 };
 
 // Send notification to support team
-const sendNotificationToSupport = async (ticketData) => {
+const sendNotificationToSupport = async (ticketData, servicios) => {
     const transporter = createTransporter();
-    
-    const servicios = {
-        'reparacion': 'Reparación de Equipos',
-        'redes': 'Montaje de Redes',
-        'impresoras': 'Soporte de Impresoras',
-        'seguridad': 'Seguridad Informática',
-        'errores': 'Detección de Errores',
-        'soporte': 'Soporte Técnico General'
-    };
 
     const mailOptions = {
         from: process.env.EMAIL_FROM,

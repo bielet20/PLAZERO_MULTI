@@ -50,7 +50,27 @@ const {
     getTotalHorasTicket,
     getHorasPorTecnico,
     updateHorasTrabajo,
-    deleteHorasTrabajo
+    deleteHorasTrabajo,
+    // Materiales
+    getAllMaterials,
+    getMaterialById,
+    createMaterial,
+    updateMaterial,
+    deleteMaterial,
+    addMaterialToTicket,
+    getMaterialsForTicket,
+    removeMaterialFromTicket,
+    // Facturación
+    createInvoice,
+    getInvoiceById,
+    getInvoicesByTicketId,
+    // Empresas
+    getAllEmpresas,
+    getEmpresaById,
+    createEmpresa,
+    updateEmpresa,
+    deleteEmpresa,
+    transferirTicketEmpresa
 } = require('./database');
 
 const { 
@@ -66,6 +86,19 @@ app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
 
+// Cookie parser is required for csurf when using cookie-based tokens
+const cookieParser = require('cookie-parser');
+app.use(cookieParser());
+
+if (process.env.NODE_ENV === 'production' && !process.env.SESSION_SECRET) {
+    console.error('FATAL ERROR: SESSION_SECRET is not set in production environment.');
+    process.exit(1);
+}
+
+const csurf = require('csurf');
+
+// ... (existing code)
+
 // Session configuration
 app.use(session({
     secret: process.env.SESSION_SECRET || 'mi_secreto_temporal',
@@ -76,6 +109,13 @@ app.use(session({
         maxAge: 24 * 60 * 60 * 1000 // 24 hours
     }
 }));
+
+const csrfProtection = csurf({ cookie: true });
+
+app.get('/api/csrf-token', csrfProtection, (req, res) => {
+    res.json({ csrfToken: req.csrfToken() });
+});
+
 
 // Favicon handler
 app.get('/favicon.ico', (req, res) => {
@@ -207,23 +247,6 @@ app.post('/api/login', async (req, res) => {
             }
         }
         
-        // Fallback a variables de entorno (para compatibilidad)
-        const validUsername = process.env.ADMIN_USERNAME || 'admin';
-        const validPassword = process.env.ADMIN_PASSWORD || 'admin123';
-        const isProduction = process.env.NODE_ENV === 'production';
-        
-        if (username === validUsername && password === validPassword) {
-            req.session.authenticated = true;
-            req.session.username = username;
-            req.session.rol = 'admin';
-            
-            return res.json({ 
-                success: true, 
-                message: isProduction ? '✓ Acceso autorizado - Entorno de Producción' : '✓ Login exitoso - Entorno de Desarrollo',
-                environment: isProduction ? 'production' : 'development'
-            });
-        }
-        
         // Credenciales incorrectas
         res.status(401).json({ 
             success: false, 
@@ -239,7 +262,7 @@ app.post('/api/login', async (req, res) => {
     }
 });
 
-app.post('/api/logout', (req, res) => {
+app.post('/api/logout', csrfProtection, (req, res) => {
     req.session.destroy((err) => {
         if (err) {
             return res.status(500).json({ success: false, message: 'Error al cerrar sesión' });
@@ -249,7 +272,7 @@ app.post('/api/logout', (req, res) => {
 });
 
 // Create new ticket
-app.post('/api/tickets', async (req, res) => {
+app.post('/api/tickets', csrfProtection, async (req, res) => {
     try {
         const { nombre, email, telefono, servicio, prioridad, descripcion } = req.body;
 
@@ -280,10 +303,23 @@ app.post('/api/tickets', async (req, res) => {
             descripcion
         };
 
+        const allServices = await getAllServices();
+        const servicesMap = allServices.reduce((acc, s) => {
+            acc[s.codigo] = s.nombre;
+            return acc;
+        }, {});
+
+        const prioritiesMap = {
+            'baja': 'Baja',
+            'media': 'Media',
+            'alta': 'Alta',
+            'urgente': 'Urgente'
+        };
+
         // Send emails (don't wait for them to complete)
         Promise.all([
-            sendTicketConfirmation(ticketData),
-            sendNotificationToSupport(ticketData)
+            sendTicketConfirmation(ticketData, servicesMap, prioritiesMap),
+            sendNotificationToSupport(ticketData, servicesMap)
         ]).then(() => {
             console.log(`✓ Emails enviados para ticket ${result.ticketId}`);
         }).catch(err => {
@@ -308,7 +344,7 @@ app.post('/api/tickets', async (req, res) => {
 });
 
 // Get all tickets
-app.get('/api/tickets', requireAuth, async (req, res) => {
+app.get('/api/tickets', requireAuth, csrfProtection, async (req, res) => {
     try {
         const tickets = await getAllTickets();
         res.json(tickets);
@@ -319,7 +355,7 @@ app.get('/api/tickets', requireAuth, async (req, res) => {
 });
 
 // Get ticket by ID
-app.get('/api/tickets/:ticketId', requireAuth, async (req, res) => {
+app.get('/api/tickets/:ticketId', requireAuth, csrfProtection, async (req, res) => {
     try {
         const ticket = await getTicketById(req.params.ticketId);
         if (ticket) {
@@ -334,7 +370,7 @@ app.get('/api/tickets/:ticketId', requireAuth, async (req, res) => {
 });
 
 // Update ticket status
-app.patch('/api/tickets/:ticketId/status', requireAuth, async (req, res) => {
+app.patch('/api/tickets/:ticketId/status', requireAuth, csrfProtection, async (req, res) => {
     try {
         const { estado } = req.body;
         const validStates = ['pendiente', 'en_proceso', 'resuelto', 'cerrado'];
@@ -357,7 +393,7 @@ app.patch('/api/tickets/:ticketId/status', requireAuth, async (req, res) => {
 });
 
 // Get tickets by status
-app.get('/api/tickets/status/:estado', requireAuth, async (req, res) => {
+app.get('/api/tickets/status/:estado', requireAuth, csrfProtection, async (req, res) => {
     try {
         const tickets = await getTicketsByStatus(req.params.estado);
         res.json(tickets);
@@ -368,7 +404,7 @@ app.get('/api/tickets/status/:estado', requireAuth, async (req, res) => {
 });
 
 // Add note to ticket
-app.post('/api/tickets/:ticketId/notes', requireAuth, async (req, res) => {
+app.post('/api/tickets/:ticketId/notes', requireAuth, csrfProtection, async (req, res) => {
     try {
         const { nota, autor } = req.body;
         if (!nota || !autor) {
@@ -383,7 +419,7 @@ app.post('/api/tickets/:ticketId/notes', requireAuth, async (req, res) => {
 });
 
 // Get notes for ticket
-app.get('/api/tickets/:ticketId/notes', requireAuth, async (req, res) => {
+app.get('/api/tickets/:ticketId/notes', requireAuth, csrfProtection, async (req, res) => {
     try {
         const notes = await getTicketNotes(req.params.ticketId);
         res.json(notes);
@@ -396,7 +432,7 @@ app.get('/api/tickets/:ticketId/notes', requireAuth, async (req, res) => {
 // ==================== HORAS DE TRABAJO ====================
 
 // Add hours worked on ticket
-app.post('/api/tickets/:ticketId/horas', requireAuth, async (req, res) => {
+app.post('/api/tickets/:ticketId/horas', requireAuth, csrfProtection, async (req, res) => {
     try {
         const { ticketId } = req.params;
         const { usuarioId, tecnicoNombre, horas, descripcion } = req.body;
@@ -430,7 +466,7 @@ app.post('/api/tickets/:ticketId/horas', requireAuth, async (req, res) => {
 });
 
 // Get hours worked on ticket
-app.get('/api/tickets/:ticketId/horas', requireAuth, async (req, res) => {
+app.get('/api/tickets/:ticketId/horas', requireAuth, csrfProtection, async (req, res) => {
     try {
         const horas = await getHorasTrabajo(req.params.ticketId);
         const total = await getTotalHorasTicket(req.params.ticketId);
@@ -448,7 +484,7 @@ app.get('/api/tickets/:ticketId/horas', requireAuth, async (req, res) => {
 });
 
 // Update hours entry
-app.put('/api/tickets/horas/:id', requireAuth, async (req, res) => {
+app.put('/api/tickets/horas/:id', requireAuth, csrfProtection, async (req, res) => {
     try {
         const { horas, descripcion } = req.body;
         
@@ -470,7 +506,7 @@ app.put('/api/tickets/horas/:id', requireAuth, async (req, res) => {
 });
 
 // Delete hours entry
-app.delete('/api/tickets/horas/:id', requireAdmin, async (req, res) => {
+app.delete('/api/tickets/horas/:id', requireAdmin, csrfProtection, async (req, res) => {
     try {
         const result = await deleteHorasTrabajo(req.params.id);
         
@@ -486,7 +522,7 @@ app.delete('/api/tickets/horas/:id', requireAdmin, async (req, res) => {
 });
 
 // Assign technician to ticket
-app.patch('/api/tickets/:ticketId/assign', requireAuth, async (req, res) => {
+app.patch('/api/tickets/:ticketId/assign', requireAuth, csrfProtection, async (req, res) => {
     try {
         const { tecnico } = req.body;
         if (!tecnico) {
@@ -505,7 +541,7 @@ app.patch('/api/tickets/:ticketId/assign', requireAuth, async (req, res) => {
 });
 
 // Update complete ticket (admin edit)
-app.put('/api/tickets/:ticketId', requireAuth, async (req, res) => {
+app.put('/api/tickets/:ticketId', requireAuth, csrfProtection, async (req, res) => {
     try {
         const { ticketId } = req.params;
         const ticketData = req.body;
@@ -525,7 +561,7 @@ app.put('/api/tickets/:ticketId', requireAuth, async (req, res) => {
 
 // Delete ticket (admin only)
 // Archive ticket (soft delete - admin only)
-app.delete('/api/tickets/:ticketId', requireAuth, requireAdmin, async (req, res) => {
+app.delete('/api/tickets/:ticketId', requireAuth, requireAdmin, csrfProtection, async (req, res) => {
     try {
         const { ticketId } = req.params;
         const usuario = req.session.username;
@@ -543,7 +579,7 @@ app.delete('/api/tickets/:ticketId', requireAuth, requireAdmin, async (req, res)
 });
 
 // Restore archived ticket (admin only)
-app.post('/api/tickets/:ticketId/restore', requireAuth, requireAdmin, async (req, res) => {
+app.post('/api/tickets/:ticketId/restore', requireAuth, requireAdmin, csrfProtection, async (req, res) => {
     try {
         const { ticketId } = req.params;
         const result = await restoreTicket(ticketId);
@@ -560,7 +596,7 @@ app.post('/api/tickets/:ticketId/restore', requireAuth, requireAdmin, async (req
 });
 
 // Get archived tickets
-app.get('/api/tickets/archived/list', requireAuth, requireAdmin, async (req, res) => {
+app.get('/api/tickets/archived/list', requireAuth, requireAdmin, csrfProtection, async (req, res) => {
     try {
         const tickets = await getArchivedTickets();
         res.json(tickets);
@@ -571,7 +607,7 @@ app.get('/api/tickets/archived/list', requireAuth, requireAdmin, async (req, res
 });
 
 // Archive note (soft delete - admin only)
-app.delete('/api/notes/:noteId', requireAuth, requireAdmin, async (req, res) => {
+app.delete('/api/notes/:noteId', requireAuth, requireAdmin, csrfProtection, async (req, res) => {
     try {
         const { noteId } = req.params;
         const usuario = req.session.username;
@@ -589,7 +625,7 @@ app.delete('/api/notes/:noteId', requireAuth, requireAdmin, async (req, res) => 
 });
 
 // Restore archived note
-app.post('/api/notes/:noteId/restore', requireAuth, requireAdmin, async (req, res) => {
+app.post('/api/notes/:noteId/restore', requireAuth, requireAdmin, csrfProtection, async (req, res) => {
     try {
         const { noteId } = req.params;
         const result = await restoreNote(noteId);
@@ -606,7 +642,7 @@ app.post('/api/notes/:noteId/restore', requireAuth, requireAdmin, async (req, re
 });
 
 // Register WhatsApp contact
-app.post('/api/tickets/:ticketId/whatsapp', requireAuth, async (req, res) => {
+app.post('/api/tickets/:ticketId/whatsapp', requireAuth, csrfProtection, async (req, res) => {
     try {
         const { telefono, mensaje, enviado_por } = req.body;
         if (!telefono || !enviado_por) {
@@ -621,7 +657,7 @@ app.post('/api/tickets/:ticketId/whatsapp', requireAuth, async (req, res) => {
 });
 
 // Get WhatsApp contacts for ticket
-app.get('/api/tickets/:ticketId/whatsapp', requireAuth, async (req, res) => {
+app.get('/api/tickets/:ticketId/whatsapp', requireAuth, csrfProtection, async (req, res) => {
     try {
         const contacts = await getWhatsAppContacts(req.params.ticketId);
         res.json(contacts);
@@ -631,20 +667,21 @@ app.get('/api/tickets/:ticketId/whatsapp', requireAuth, async (req, res) => {
     }
 });
 
+
 // Admin panel route (simple HTML page for managing tickets)
-app.get('/admin', requireAuth, (req, res) => {
+app.get('/admin', requireAuth, csrfProtection, (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'admin.html'));
 });
 
 // Setup panel route (para cambiar credenciales)
-app.get('/setup', (req, res) => {
+app.get('/setup', csrfProtection, (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'setup.html'));
 });
 
 // ==================== API SERVICIOS ====================
 
 // Get all services
-app.get('/api/servicios', requireAuth, async (req, res) => {
+app.get('/api/servicios', requireAuth, csrfProtection, async (req, res) => {
     try {
         const servicios = await getAllServices();
         res.json(servicios);
@@ -655,7 +692,7 @@ app.get('/api/servicios', requireAuth, async (req, res) => {
 });
 
 // Create service
-app.post('/api/servicios', requireAuth, async (req, res) => {
+app.post('/api/servicios', requireAuth, csrfProtection, async (req, res) => {
     try {
         const { codigo, nombre, descripcion } = req.body;
         
@@ -672,7 +709,7 @@ app.post('/api/servicios', requireAuth, async (req, res) => {
 });
 
 // Update service
-app.put('/api/servicios/:id', requireAuth, async (req, res) => {
+app.put('/api/servicios/:id', requireAuth, csrfProtection, async (req, res) => {
     try {
         const { id } = req.params;
         const { codigo, nombre, descripcion, activo } = req.body;
@@ -695,7 +732,7 @@ app.put('/api/servicios/:id', requireAuth, async (req, res) => {
 });
 
 // Delete service
-app.delete('/api/servicios/:id', requireAuth, async (req, res) => {
+app.delete('/api/servicios/:id', requireAuth, csrfProtection, async (req, res) => {
     try {
         const { id } = req.params;
         const result = await deleteService(id);
@@ -711,10 +748,353 @@ app.delete('/api/servicios/:id', requireAuth, async (req, res) => {
     }
 });
 
+// ==================== API MATERIALES ====================
+
+// Get all materials
+app.get('/api/materiales', requireAuth, csrfProtection, async (req, res) => {
+    try {
+        const materiales = await getAllMaterials();
+        res.json(materiales);
+    } catch (error) {
+        console.error('Error obteniendo materiales:', error);
+        res.status(500).json({ error: 'Error obteniendo materiales' });
+    }
+});
+
+// Create material
+app.post('/api/materiales', requireAuth, requireAdmin, csrfProtection, async (req, res) => {
+    try {
+        const { nombre, descripcion, precio } = req.body;
+        if (!nombre || precio === undefined) {
+            return res.status(400).json({ error: 'Nombre y precio son requeridos' });
+        }
+        const result = await createMaterial(nombre, descripcion || '', precio);
+        res.json({ success: true, message: 'Material creado exitosamente', id: result.id });
+    } catch (error) {
+        console.error('Error creando material:', error);
+        res.status(500).json({ error: 'Error creando material' });
+    }
+});
+
+// Update material
+app.put('/api/materiales/:id', requireAuth, requireAdmin, csrfProtection, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { nombre, descripcion, precio, activo } = req.body;
+        
+        if (!nombre || precio === undefined || activo === undefined) {
+            return res.status(400).json({ error: 'Nombre, precio y estado de activación son requeridos' });
+        }
+        
+        const result = await updateMaterial(id, nombre, descripcion || '', precio, activo);
+        
+        if (result.changes > 0) {
+            res.json({ success: true, message: 'Material actualizado exitosamente' });
+        } else {
+            res.status(404).json({ error: 'Material no encontrado' });
+        }
+    } catch (error) {
+        console.error('Error actualizando material:', error);
+        res.status(500).json({ error: 'Error actualizando material' });
+    }
+});
+
+// Delete material
+app.delete('/api/materiales/:id', requireAuth, requireAdmin, csrfProtection, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const result = await deleteMaterial(id);
+        
+        if (result.changes > 0) {
+            res.json({ success: true, message: 'Material eliminado exitosamente' });
+        } else {
+            res.status(404).json({ error: 'Material no encontrado' });
+        }
+    } catch (error) {
+        console.error('Error eliminando material:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+
+// ==================== TICKET-MATERIALES ====================
+
+// Get materials for ticket
+app.get('/api/tickets/:ticketId/materiales', requireAuth, csrfProtection, async (req, res) => {
+    try {
+        const materiales = await getMaterialsForTicket(req.params.ticketId);
+        res.json(materiales);
+    } catch (error) {
+        console.error('Error obteniendo materiales del ticket:', error);
+        res.status(500).json({ error: 'Error obteniendo materiales del ticket' });
+    }
+});
+
+// Add material to ticket
+app.post('/api/tickets/:ticketId/materiales', requireAuth, csrfProtection, async (req, res) => {
+    try {
+        const { ticketId } = req.params;
+        const { material_id, cantidad } = req.body;
+        
+        if (!material_id || !cantidad || cantidad <= 0) {
+            return res.status(400).json({ error: 'ID de material y cantidad (mayor a 0) son requeridos.' });
+        }
+        
+        // Get material to fetch current price
+        const material = await getMaterialById(material_id);
+        if (!material) {
+            return res.status(404).json({ error: 'El material especificado no existe.' });
+        }
+
+        const result = await addMaterialToTicket(
+            ticketId,
+            material_id,
+            cantidad,
+            material.precio, // Use current price from inventory
+            req.session.username
+        );
+        
+        res.status(201).json({ success: true, message: 'Material añadido al ticket', id: result.id });
+        
+    } catch (error) {
+        console.error('Error añadiendo material al ticket:', error);
+        res.status(500).json({ error: 'Error añadiendo material al ticket' });
+    }
+});
+
+// Remove material from ticket
+app.delete('/api/tickets/materiales/:id', requireAuth, csrfProtection, async (req, res) => {
+    try {
+        const result = await removeMaterialFromTicket(req.params.id);
+        if (result.changes > 0) {
+            res.json({ success: true, message: 'Material eliminado del ticket.' });
+        } else {
+            res.status(404).json({ error: 'Registro de material no encontrado.' });
+        }
+    } catch (error) {
+        console.error('Error eliminando material del ticket:', error);
+        res.status(500).json({ error: 'Error eliminando material del ticket' });
+    }
+});
+
+// ==================== FACTURACIÓN ====================
+
+app.post('/api/tickets/:ticketId/invoices', requireAuth, requireAdmin, csrfProtection, async (req, res) => {
+    try {
+        const { ticketId } = req.params;
+        const { iva_percent = 21, fecha_vencimiento } = req.body;
+
+        // 1. Get ticket details
+        const ticket = await getTicketById(ticketId);
+        if (!ticket) {
+            return res.status(404).json({ error: 'Ticket no encontrado' });
+        }
+
+        // 2. Get worked hours and materials
+        const horas = await getHorasTrabajo(ticketId);
+        const materiales = await getMaterialsForTicket(ticketId);
+
+        let subtotal = 0;
+        const items = [];
+
+        // Add worked hours to invoice items
+        horas.forEach(h => {
+            // Assuming a fixed price per hour for now, this can be improved
+            const precioHora = process.env.PRICE_PER_HOUR || 50; 
+            items.push({
+                concepto: `Horas de técnico: ${h.tecnico_nombre}`,
+                descripcion: h.descripcion || `Horas trabajadas en el ticket ${ticketId}`,
+                cantidad: h.horas,
+                precio_unitario: precioHora,
+                total: h.horas * precioHora
+            });
+            subtotal += h.horas * precioHora;
+        });
+
+        // Add materials to invoice items
+        materiales.forEach(m => {
+            items.push({
+                concepto: `Material: ${m.nombre}`,
+                descripcion: '',
+                cantidad: m.cantidad,
+                precio_unitario: m.precio_unitario,
+                total: m.cantidad * m.precio_unitario
+            });
+            subtotal += m.cantidad * m.precio_unitario;
+        });
+
+        if (items.length === 0) {
+            return res.status(400).json({ error: 'No hay elementos para facturar en este ticket (horas o materiales).' });
+        }
+
+        // 3. Calculate totals
+        const iva = subtotal * (iva_percent / 100);
+        const total = subtotal + iva;
+
+        // 4. Create invoice
+        const invoiceData = {
+            ticket_id: ticketId,
+            cliente_nombre: ticket.nombre,
+            cliente_email: ticket.email,
+            fecha_vencimiento,
+            subtotal,
+            iva,
+            total,
+            items
+        };
+
+        const result = await createInvoice(invoiceData);
+
+        res.status(201).json({
+            success: true,
+            message: 'Factura creada exitosamente',
+            invoiceId: result.invoiceId
+        });
+
+    } catch (error) {
+        console.error('Error creando factura:', error);
+        res.status(500).json({ error: 'Error interno al crear la factura.' });
+    }
+});
+
+app.get('/api/tickets/:ticketId/invoices', requireAuth, csrfProtection, async (req, res) => {
+    try {
+        const { ticketId } = req.params;
+        const invoices = await getInvoicesByTicketId(ticketId);
+        res.json(invoices);
+    } catch (error) {
+        console.error('Error obteniendo facturas:', error);
+        res.status(500).json({ error: 'Error obteniendo facturas.' });
+    }
+});
+
+app.get('/api/invoices/:invoiceId', requireAuth, csrfProtection, async (req, res) => {
+    try {
+        const { invoiceId } = req.params;
+        const invoice = await getInvoiceById(invoiceId);
+        if (invoice) {
+            res.json(invoice);
+        } else {
+            res.status(404).json({ error: 'Factura no encontrada' });
+        }
+    } catch (error) {
+        console.error('Error obteniendo factura:', error);
+        res.status(500).json({ error: 'Error obteniendo factura.' });
+    }
+});
+
+// ==================== API EMPRESAS ====================
+
+// Get all empresas
+app.get('/api/empresas', requireAuth, csrfProtection, async (req, res) => {
+    try {
+        const empresas = await getAllEmpresas();
+        res.json(empresas);
+    } catch (error) {
+        console.error('Error obteniendo empresas:', error);
+        res.status(500).json({ error: 'Error obteniendo empresas' });
+    }
+});
+
+// Get empresa by ID
+app.get('/api/empresas/:id', requireAuth, csrfProtection, async (req, res) => {
+    try {
+        const empresa = await getEmpresaById(req.params.id);
+        if (empresa) {
+            res.json(empresa);
+        } else {
+            res.status(404).json({ error: 'Empresa no encontrada' });
+        }
+    } catch (error) {
+        console.error('Error obteniendo empresa:', error);
+        res.status(500).json({ error: 'Error obteniendo empresa' });
+    }
+});
+
+// Create empresa
+app.post('/api/empresas', requireAuth, requireAdmin, csrfProtection, async (req, res) => {
+    try {
+        const { nombre, cif, direccion, telefono, email } = req.body;
+        
+        if (!nombre) {
+            return res.status(400).json({ error: 'Nombre es requerido' });
+        }
+        
+        const result = await createEmpresa(nombre, cif || '', direccion || '', telefono || '', email || '');
+        res.json({ success: true, message: 'Empresa creada exitosamente', id: result.id });
+    } catch (error) {
+        console.error('Error creando empresa:', error);
+        res.status(500).json({ error: 'Error creando empresa' });
+    }
+});
+
+// Update empresa
+app.put('/api/empresas/:id', requireAuth, requireAdmin, csrfProtection, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { nombre, cif, direccion, telefono, email, activo } = req.body;
+        
+        if (!nombre) {
+            return res.status(400).json({ error: 'Nombre es requerido' });
+        }
+        
+        const result = await updateEmpresa(id, nombre, cif || '', direccion || '', telefono || '', email || '', activo !== undefined ? activo : 1);
+        
+        if (result.changes > 0) {
+            res.json({ success: true, message: 'Empresa actualizada exitosamente' });
+        } else {
+            res.status(404).json({ error: 'Empresa no encontrada' });
+        }
+    } catch (error) {
+        console.error('Error actualizando empresa:', error);
+        res.status(500).json({ error: 'Error actualizando empresa' });
+    }
+});
+
+// Delete empresa
+app.delete('/api/empresas/:id', requireAuth, requireAdmin, csrfProtection, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const result = await deleteEmpresa(id);
+        
+        if (result.changes > 0) {
+            res.json({ success: true, message: 'Empresa eliminada exitosamente' });
+        } else {
+            res.status(404).json({ error: 'Empresa no encontrada' });
+        }
+    } catch (error) {
+        console.error('Error eliminando empresa:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Transfer ticket to another empresa
+app.post('/api/tickets/:ticketId/transferir-empresa', requireAuth, requireAdmin, csrfProtection, async (req, res) => {
+    try {
+        const { ticketId } = req.params;
+        const { empresa_id } = req.body;
+        
+        if (!empresa_id) {
+            return res.status(400).json({ error: 'ID de empresa es requerido' });
+        }
+        
+        const result = await transferirTicketEmpresa(ticketId, empresa_id);
+        
+        if (result.changes > 0) {
+            res.json({ success: true, message: 'Ticket transferido exitosamente a la nueva empresa' });
+        } else {
+            res.status(404).json({ error: 'Ticket no encontrado' });
+        }
+    } catch (error) {
+        console.error('Error transfiriendo ticket:', error);
+        res.status(500).json({ error: 'Error transfiriendo ticket' });
+    }
+});
+
 // ==================== API USUARIOS ====================
 
 // Get all users
-app.get('/api/usuarios', requireAuth, async (req, res) => {
+app.get('/api/usuarios', requireAuth, csrfProtection, async (req, res) => {
     try {
         const usuarios = await getAllUsers();
         res.json(usuarios);
@@ -725,7 +1105,7 @@ app.get('/api/usuarios', requireAuth, async (req, res) => {
 });
 
 // Create new user
-app.post('/api/usuarios', requireAuth, async (req, res) => {
+app.post('/api/usuarios', requireAuth, csrfProtection, async (req, res) => {
     try {
         const { username, password, nombre_completo, email, rol } = req.body;
         
@@ -759,7 +1139,7 @@ app.post('/api/usuarios', requireAuth, async (req, res) => {
 });
 
 // Update user
-app.put('/api/usuarios/:id', requireAuth, async (req, res) => {
+app.put('/api/usuarios/:id', requireAuth, csrfProtection, async (req, res) => {
     try {
         const { id } = req.params;
         const { nombre_completo, email, rol, activo, password } = req.body;
@@ -786,7 +1166,7 @@ app.put('/api/usuarios/:id', requireAuth, async (req, res) => {
 });
 
 // Delete user
-app.delete('/api/usuarios/:id', requireAuth, async (req, res) => {
+app.delete('/api/usuarios/:id', requireAuth, csrfProtection, async (req, res) => {
     try {
         const { id } = req.params;
         
@@ -815,7 +1195,7 @@ app.get('/api/health', (req, res) => {
 });
 
 // Get session info (verificar rol del usuario actual)
-app.get('/api/session', (req, res) => {
+app.get('/api/session', csrfProtection, (req, res) => {
     if (req.session && req.session.authenticated) {
         res.json({
             authenticated: true,
@@ -833,7 +1213,7 @@ app.get('/api/session', (req, res) => {
 });
 
 // Diagnostic endpoint for setup
-app.get('/api/setup/check', async (req, res) => {
+app.get('/api/setup/check', csrfProtection, async (req, res) => {
     try {
         const adminUser = await getUserByUsername('admin');
         
@@ -863,7 +1243,7 @@ app.get('/api/setup/check', async (req, res) => {
 });
 
 // Diagnostic endpoint for work hours table
-app.get('/api/diagnostics/horas', async (req, res) => {
+app.get('/api/diagnostics/horas', csrfProtection, async (req, res) => {
     try {
         const { db } = require('./database');
         
@@ -893,7 +1273,7 @@ app.get('/api/diagnostics/horas', async (req, res) => {
 // ========== BACKUP ENDPOINTS ==========
 
 // List all backups
-app.get('/api/backups', requireAuth, async (req, res) => {
+app.get('/api/backups', requireAuth, csrfProtection, async (req, res) => {
     try {
         const backupDir = path.join(__dirname, 'backups');
         if (!fs.existsSync(backupDir)) {
@@ -934,7 +1314,7 @@ app.get('/api/backups', requireAuth, async (req, res) => {
 });
 
 // Create backup now
-app.post('/api/backups/create', requireAuth, requireAdmin, async (req, res) => {
+app.post('/api/backups/create', requireAuth, requireAdmin, csrfProtection, async (req, res) => {
     try {
         const backupScript = path.join(__dirname, 'backup.js');
         if (!fs.existsSync(backupScript)) {
@@ -975,7 +1355,7 @@ app.post('/api/backups/create', requireAuth, requireAdmin, async (req, res) => {
 });
 
 // Download backup
-app.get('/api/backups/download/:filename', requireAuth, (req, res) => {
+app.get('/api/backups/download/:filename', requireAuth, csrfProtection, (req, res) => {
     try {
         const filename = req.params.filename;
         // Validar que el filename no intente salir del directorio
@@ -999,7 +1379,7 @@ app.get('/api/backups/download/:filename', requireAuth, (req, res) => {
 });
 
 // Upload and restore backup
-app.post('/api/backups/restore', requireAuth, requireAdmin, upload.single('backupFile'), async (req, res) => {
+app.post('/api/backups/restore', requireAuth, requireAdmin, upload.single('backupFile'), csrfProtection, async (req, res) => {
     try {
         const file = req.file;
         
@@ -1038,7 +1418,7 @@ app.post('/api/backups/restore', requireAuth, requireAdmin, upload.single('backu
 });
 
 // Delete backup
-app.delete('/api/backups/:filename', requireAuth, requireAdmin, (req, res) => {
+app.delete('/api/backups/:filename', requireAuth, requireAdmin, csrfProtection, (req, res) => {
     try {
         const filename = req.params.filename;
         
@@ -1064,7 +1444,7 @@ app.delete('/api/backups/:filename', requireAuth, requireAdmin, (req, res) => {
 });
 
 // Update production credentials (admin password)
-app.post('/api/setup/update-admin-password', async (req, res) => {
+app.post('/api/setup/update-admin-password', csrfProtection, async (req, res) => {
     try {
         const { currentPassword, newPassword, confirmPassword } = req.body;
         
@@ -1125,7 +1505,7 @@ app.post('/api/setup/update-admin-password', async (req, res) => {
 });
 
 // Create Root user (one-time setup)
-app.post('/api/setup/create-root-user', async (req, res) => {
+app.post('/api/setup/create-root-user', csrfProtection, async (req, res) => {
     try {
         const { adminPassword, rootPassword } = req.body;
         

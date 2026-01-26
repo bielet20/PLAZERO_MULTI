@@ -37,7 +37,21 @@ ADMIN_USERNAME=myiatech_admin
 ADMIN_PASSWORD=MyI@T3ch2026!Secure#Prod
 ```
 
-### 3. Instalar dependencias
+### 3. Crear un usuario
+
+Para crear un usuario, ejecuta el siguiente comando:
+
+```bash
+node create-user.js <username> <password> [nombre_completo] [email] [rol]
+```
+
+Ejemplo:
+
+```bash
+node create-user.js admin admin123 "Admin User" admin@example.com admin
+```
+
+### 4. Instalar dependencias
 
 ```bash
 npm install --production

@@ -18,9 +18,23 @@ Ahora puedes enviar y recibir mensajes de WhatsApp directamente desde el panel d
 
 ### 1. Acceder al Panel de WhatsApp
 
-1. Ve a http://localhost:3000/admin
-2. Inicia sesión (admin / admin123)
-3. Haz clic en el botón **"Abrir WhatsApp Web"**
+#### Crear un usuario
+
+Para crear un usuario, ejecuta el siguiente comando:
+
+```bash
+node create-user.js <username> <password> [nombre_completo] [email] [rol]
+```
+
+Ejemplo:
+
+```bash
+node create-user.js admin admin123 "Admin User" admin@example.com admin
+```
+
+1.  Ve a http://localhost:3000/admin
+2.  Inicia sesión (admin / admin123)
+3.  Haz clic en el botón **"Abrir WhatsApp Web"**
 
 ### 2. Escanear el Código QR
 

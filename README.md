@@ -232,7 +232,38 @@ pm2 save
 - [SEGURIDAD.md](SEGURIDAD.md) - Seguridad y configuración
 - [WHATSAPP.md](WHATSAPP.md) - Integración de WhatsApp
 
-## 🔧 Desarrollo
+## 🔧 Development
+
+### First time setup
+
+1.  **Install dependencies:**
+    ```bash
+    npm install
+    ```
+
+2.  **Create a user:**
+    ```bash
+    node create-user.js <username> <password> [nombre_completo] [email] [rol]
+    ```
+    Example:
+    ```bash
+    node create-user.js admin admin123 "Admin User" admin@example.com admin
+    ```
+
+3.  **Start the server:**
+    ```bash
+    npm run dev
+    ```
+
+### Running the application
+
+1.  **Start the server:**
+    ```bash
+    npm run dev
+    ```
+
+2.  **Open in your browser:**
+    [http://localhost:3000](http://localhost:3000)
 
 ### Estructura del Proyecto
 ```

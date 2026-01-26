@@ -5,730 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Panel de Administración - Tickets</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: #f3f4f6;
-            color: #111827;
-        }
-
-        .admin-header {
-            background: linear-gradient(135deg, #2563eb, #1e40af);
-            color: white;
-            padding: 1.5rem;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-
-        .admin-header h1 {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-
-        .container {
-            max-width: 1400px;
-            margin: 0 auto;
-            padding: 2rem;
-        }
-
-        .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 1.5rem;
-            margin-bottom: 2rem;
-        }
-
-        .stat-card {
-            background: white;
-            padding: 1.5rem;
-            border-radius: 10px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-
-        .stat-card h3 {
-            color: #6b7280;
-            font-size: 0.9rem;
-            margin-bottom: 0.5rem;
-        }
-
-        .stat-card .number {
-            font-size: 2rem;
-            font-weight: bold;
-            color: #2563eb;
-        }
-
-        .filters {
-            background: white;
-            padding: 1.5rem;
-            border-radius: 10px;
-            margin-bottom: 2rem;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-
-        .filters h2 {
-            margin-bottom: 1rem;
-        }
-
-        .filter-group {
-            display: flex;
-            gap: 1rem;
-            flex-wrap: wrap;
-            margin-bottom: 1rem;
-        }
-
-        .filter-section {
-            margin-bottom: 1rem;
-        }
-
-        .filter-section label {
-            display: block;
-            margin-bottom: 0.5rem;
-            font-weight: 600;
-            color: #6b7280;
-        }
-
-        .filter-select {
-            padding: 0.5rem;
-            border: 2px solid #e5e7eb;
-            border-radius: 5px;
-            min-width: 200px;
-        }
-
-        .filter-btn {
-            padding: 0.5rem 1rem;
-            border: 2px solid #e5e7eb;
-            background: white;
-            border-radius: 5px;
-            cursor: pointer;
-            transition: all 0.3s;
-        }
-
-        .filter-btn:hover {
-            border-color: #2563eb;
-            color: #2563eb;
-        }
-
-        .filter-btn.active {
-            background: #2563eb;
-            color: white;
-            border-color: #2563eb;
-        }
-
-        .tickets-container {
-            background: white;
-            border-radius: 10px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            overflow: hidden;
-        }
-
-        .tickets-header {
-            padding: 1.5rem;
-            border-bottom: 2px solid #e5e7eb;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .search-box {
-            padding: 0.5rem 1rem;
-            border: 2px solid #e5e7eb;
-            border-radius: 5px;
-            width: 300px;
-        }
-
-        table {
-            width: 100%;
-            border-collapse: collapse;
-        }
-
-        thead {
-            background: #f9fafb;
-        }
-
-        th {
-            padding: 1rem;
-            text-align: left;
-            font-weight: 600;
-            color: #6b7280;
-            border-bottom: 2px solid #e5e7eb;
-        }
-
-        td {
-            padding: 1rem;
-            border-bottom: 1px solid #e5e7eb;
-        }
-
-        tr:hover {
-            background: #f9fafb;
-        }
-
-        .badge {
-            display: inline-block;
-            padding: 0.25rem 0.75rem;
-            border-radius: 20px;
-            font-size: 0.85rem;
-            font-weight: 600;
-        }
-
-        .badge-pendiente { background: #fef3c7; color: #92400e; }
-        .badge-en_proceso { background: #dbeafe; color: #1e40af; }
-        .badge-resuelto { background: #d1fae5; color: #065f46; }
-        .badge-cerrado { background: #e5e7eb; color: #374151; }
-
-        .badge-urgente { background: #fee2e2; color: #991b1b; }
-        .badge-alta { background: #fed7aa; color: #9a3412; }
-        .badge-media { background: #fef3c7; color: #92400e; }
-        .badge-baja { background: #d1fae5; color: #065f46; }
-
-        .action-btns {
-            display: flex;
-            gap: 0.5rem;
-        }
-
-        .btn-small {
-            padding: 0.25rem 0.75rem;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 0.85rem;
-            transition: all 0.3s;
-        }
-
-        .btn-view { background: #3b82f6; color: white; }
-        .btn-view:hover { background: #2563eb; }
-
-        .btn-edit { background: #f59e0b; color: white; }
-        .btn-edit:hover { background: #d97706; }
-
-        .btn-delete { background: #ef4444; color: white; }
-        .btn-delete:hover { background: #dc2626; }
-
-        .btn-update { background: #10b981; color: white; }
-        .btn-update:hover { background: #059669; }
-
-        .modal {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0,0,0,0.5);
-            z-index: 1000;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .modal.active {
-            display: flex;
-        }
-
-        .modal-content {
-            background: white;
-            padding: 2rem;
-            border-radius: 10px;
-            max-width: 600px;
-            width: 90%;
-            max-height: 80vh;
-            overflow-y: auto;
-        }
-
-        .modal-body {
-            margin-top: 1rem;
-        }
-
-        .form-group {
-            margin-bottom: 1.5rem;
-        }
-
-        .form-group label {
-            display: block;
-            font-weight: 600;
-            margin-bottom: 0.5rem;
-            color: #374151;
-        }
-
-        .form-group input,
-        .form-group select,
-        .form-group textarea {
-            width: 100%;
-            padding: 0.75rem;
-            border: 2px solid #e5e7eb;
-            border-radius: 5px;
-            font-size: 1rem;
-            font-family: inherit;
-        }
-
-        .form-group input:focus,
-        .form-group select:focus,
-        .form-group textarea:focus {
-            outline: none;
-            border-color: #3b82f6;
-            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
-        }
-
-        .modal-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 1.5rem;
-            padding-bottom: 1rem;
-            border-bottom: 2px solid #e5e7eb;
-        }
-
-        .close-modal {
-            background: none;
-            border: none;
-            font-size: 1.5rem;
-            cursor: pointer;
-            color: #6b7280;
-        }
-
-        .detail-row {
-            padding: 0.75rem 0;
-            border-bottom: 1px solid #e5e7eb;
-        }
-
-        .detail-label {
-            font-weight: 600;
-            color: #6b7280;
-            margin-bottom: 0.25rem;
-        }
-
-        .status-selector {
-            margin-top: 1.5rem;
-            padding: 1rem;
-            background: #f9fafb;
-            border-radius: 8px;
-        }
-
-        .status-selector select {
-            width: 100%;
-            padding: 0.5rem;
-            border: 2px solid #e5e7eb;
-            border-radius: 5px;
-            margin-top: 0.5rem;
-        }
-
-        .btn-update-status {
-            width: 100%;
-            padding: 0.75rem;
-            background: #10b981;
-            color: white;
-            border: none;
-            border-radius: 5px;
-            font-weight: 600;
-            cursor: pointer;
-            margin-top: 1rem;
-        }
-
-        .btn-update-status:hover {
-            background: #059669;
-        }
-
-        .loading {
-            text-align: center;
-            padding: 3rem;
-            color: #6b7280;
-        }
-
-        .empty-state {
-            text-align: center;
-            padding: 3rem;
-            color: #6b7280;
-        }
-
-        .empty-state i {
-            font-size: 4rem;
-            margin-bottom: 1rem;
-            color: #d1d5db;
-        }
-
-        .notes-section {
-            margin-top: 1.5rem;
-            padding: 1rem;
-            background: #f9fafb;
-            border-radius: 8px;
-        }
-
-        .note-item {
-            background: white;
-            padding: 1rem;
-            margin-bottom: 0.5rem;
-            border-radius: 5px;
-            border-left: 3px solid #2563eb;
-        }
-
-        .note-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 0.5rem;
-            font-size: 0.85rem;
-            color: #6b7280;
-        }
-
-        .note-header div {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            gap: 1rem;
-            flex: 1;
-        }
-
-        .btn-delete-note {
-            background: #ef4444;
-            color: white;
-            border: none;
-            padding: 0.25rem 0.5rem;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 0.8rem;
-            transition: all 0.3s;
-        }
-
-        .btn-delete-note:hover {
-            background: #dc2626;
-        }
-
-        .note-text {
-            color: #111827;
-        }
-
-        .add-note-form {
-            margin-top: 1rem;
-        }
-
-        .add-note-form textarea {
-            width: 100%;
-            padding: 0.5rem;
-            border: 2px solid #e5e7eb;
-            border-radius: 5px;
-            margin-bottom: 0.5rem;
-            min-height: 80px;
-        }
-
-        .add-note-form input {
-            width: 100%;
-            padding: 0.5rem;
-            border: 2px solid #e5e7eb;
-            border-radius: 5px;
-            margin-bottom: 0.5rem;
-        }
-
-        .btn-add-note {
-            width: 100%;
-            padding: 0.5rem;
-            background: #2563eb;
-            color: white;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-        }
-
-        .btn-add-note:hover {
-            background: #1e40af;
-        }
-
-        .assignment-section {
-            margin-top: 1.5rem;
-            padding: 1rem;
-            background: #fef3c7;
-            border-radius: 8px;
-        }
-
-        .btn-export {
-            padding: 0.75rem 1.5rem;
-            background: #059669;
-            color: white;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-        }
-
-        .btn-export:hover {
-            background: #047857;
-        }
-
-        .whatsapp-section {
-            margin-top: 1.5rem;
-            padding: 1.5rem;
-            background: linear-gradient(135deg, #25d366, #128c7e);
-            border-radius: 8px;
-            color: white;
-        }
-
-        .whatsapp-section h3 {
-            color: white;
-            margin-bottom: 1rem;
-        }
-
-        .whatsapp-templates {
-            display: grid;
-            gap: 0.5rem;
-            margin-bottom: 1rem;
-        }
-
-        .template-btn {
-            padding: 0.75rem;
-            background: rgba(255, 255, 255, 0.2);
-            border: 2px solid rgba(255, 255, 255, 0.3);
-            border-radius: 5px;
-            color: white;
-            cursor: pointer;
-            text-align: left;
-            transition: all 0.3s;
-        }
-
-        .template-btn:hover {
-            background: rgba(255, 255, 255, 0.3);
-            border-color: white;
-        }
-
-        .btn-whatsapp {
-            width: 100%;
-            padding: 1rem;
-            background: white;
-            color: #128c7e;
-            border: none;
-            border-radius: 5px;
-            font-weight: 600;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 0.5rem;
-            font-size: 1.1rem;
-        }
-
-        .btn-whatsapp:hover {
-            background: #f0f0f0;
-        }
-
-        .whatsapp-history {
-            margin-top: 1rem;
-            padding: 1rem;
-            background: rgba(255, 255, 255, 0.1);
-            border-radius: 5px;
-        }
-
-        .whatsapp-contact-item {
-            background: rgba(255, 255, 255, 0.2);
-            padding: 0.75rem;
-            margin-bottom: 0.5rem;
-            border-radius: 5px;
-            font-size: 0.9rem;
-        }
-
-        .btn-whatsapp-quick {
-            padding: 0.5rem 1rem;
-            background: #25d366;
-            color: white;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-            display: inline-flex;
-            align-items: center;
-            gap: 0.5rem;
-            font-weight: 600;
-        }
-
-        .btn-whatsapp-quick:hover {
-            background: #128c7e;
-        }
-
-        .custom-message {
-            width: 100%;
-            padding: 0.75rem;
-            border: 2px solid rgba(255, 255, 255, 0.3);
-            border-radius: 5px;
-            background: rgba(255, 255, 255, 0.2);
-            color: white;
-            margin-bottom: 1rem;
-            min-height: 80px;
-            resize: vertical;
-        }
-
-        .custom-message::placeholder {
-            color: rgba(255, 255, 255, 0.7);
-        }
-
-        /* Header Button */
-        .header-btn {
-            background: rgba(255,255,255,0.2);
-            color: white;
-            border: 2px solid white;
-            padding: 0.5rem 1rem;
-            border-radius: 5px;
-            cursor: pointer;
-            font-weight: 600;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-        }
-
-        .header-btn:hover {
-            background: rgba(255,255,255,0.3);
-        }
-
-        /* Users Panel */
-        .users-panel {
-            background: white;
-            border-radius: 10px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-            margin-bottom: 2rem;
-            overflow: hidden;
-        }
-
-        .users-header {
-            background: linear-gradient(135deg, #7c3aed, #5b21b6);
-            color: white;
-            padding: 1rem 1.5rem;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .users-content {
-            padding: 1.5rem;
-        }
-
-        .users-table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 1rem;
-        }
-
-        .users-table th {
-            background: #f3f4f6;
-            padding: 1rem;
-            text-align: left;
-            font-weight: 600;
-            color: #374151;
-            border-bottom: 2px solid #e5e7eb;
-        }
-
-        .users-table td {
-            padding: 1rem;
-            border-bottom: 1px solid #e5e7eb;
-        }
-
-        .users-table tr:hover {
-            background: #f9fafb;
-        }
-
-        .badge {
-            display: inline-block;
-            padding: 0.25rem 0.75rem;
-            border-radius: 9999px;
-            font-size: 0.75rem;
-            font-weight: 600;
-        }
-
-        .badge-admin {
-            background: #fef3c7;
-            color: #92400e;
-        }
-
-        .badge-tecnico {
-            background: #dbeafe;
-            color: #1e40af;
-        }
-
-        .badge-active {
-            background: #d1fae5;
-            color: #065f46;
-        }
-
-        .badge-inactive {
-            background: #fee2e2;
-            color: #991b1b;
-        }
-
-        .user-actions {
-            display: flex;
-            gap: 0.5rem;
-        }
-
-        .btn-icon {
-            padding: 0.5rem;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-            font-size: 0.875rem;
-        }
-
-        .btn-edit {
-            background: #dbeafe;
-            color: #1e40af;
-        }
-
-        .btn-delete {
-            background: #fee2e2;
-            color: #991b1b;
-        }
-
-        .btn-icon:hover {
-            opacity: 0.8;
-        }
-
-        .form-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 1rem;
-            margin-bottom: 1rem;
-        }
-
-        .form-group {
-            display: flex;
-            flex-direction: column;
-        }
-
-        .form-group label {
-            margin-bottom: 0.5rem;
-            font-weight: 600;
-            color: #374151;
-        }
-
-        .form-group input,
-        .form-group select {
-            padding: 0.75rem;
-            border: 2px solid #e5e7eb;
-            border-radius: 5px;
-            font-size: 1rem;
-        }
-
-        .form-group input:focus,
-        .form-group select:focus {
-            outline: none;
-            border-color: #7c3aed;
-        }
-
-        .toggle-whatsapp {
-            background: white;
-            color: #25D366;
-            border: 2px solid #25D366;
-            padding: 0.5rem 1rem;
-            border-radius: 5px;
-            cursor: pointer;
-            font-weight: 600;
-            transition: all 0.2s;
-        }
-
-        .toggle-whatsapp:hover {
-            background: #25D366;
-            color: white;
-        }
-    </style>
+    <link rel="stylesheet" href="admin.css">
 </head>
 <body>
     <div class="admin-header">
@@ -738,6 +15,15 @@
                 <div style="display: flex; gap: 1rem; align-items: center;">
                     <button onclick="toggleBackupsPanel()" class="header-btn">
                         <i class="fas fa-database"></i> Backups
+                    </button>
+                    <button onclick="toggleEmpresasPanel()" class="header-btn">
+                        <i class="fas fa-building"></i> Empresas
+                    </button>
+                    <button onclick="toggleServicesPanel()" class="header-btn">
+                        <i class="fas fa-cogs"></i> Servicios
+                    </button>
+                    <button onclick="toggleMaterialsPanel()" class="header-btn">
+                        <i class="fas fa-box"></i> Materiales
                     </button>
                     <button onclick="toggleUsersPanel()" class="header-btn">
                         <i class="fas fa-users"></i> Usuarios
@@ -902,6 +188,238 @@
             </div>
         </div>
 
+        <!-- Services Panel -->
+        <div class="users-panel" id="servicesPanel" style="display: none;">
+            <div class="users-header" style="background: linear-gradient(135deg, #10b981, #047857);">
+                <div>
+                    <h2 style="margin: 0; display: flex; align-items: center; gap: 0.5rem;">
+                        <i class="fas fa-cogs"></i> Gestión de Servicios
+                    </h2>
+                </div>
+                <div>
+                    <button class="toggle-whatsapp" onclick="toggleServicesPanel()">
+                        <i class="fas fa-times"></i> Cerrar
+                    </button>
+                </div>
+            </div>
+            <div class="users-content">
+                <div class="filter-actions" style="margin-bottom: 1.5rem;">
+                    <button class="btn-primary" onclick="showServiceForm()" style="background-color: #10b981; border-color: #059669;">
+                        <i class="fas fa-plus"></i> Nuevo Servicio
+                    </button>
+                </div>
+
+                <div id="serviceFormContainer" style="display: none; background: #f9fafb; padding: 1.5rem; border-radius: 8px; margin-bottom: 1.5rem;">
+                    <h3 id="serviceFormTitle">Nuevo Servicio</h3>
+                    <form id="serviceForm" onsubmit="saveService(event)">
+                        <input type="hidden" id="serviceId">
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label for="serviceCode">Código *</label>
+                                <input type="text" id="serviceCode" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="serviceName">Nombre *</label>
+                                <input type="text" id="serviceName" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="serviceDescription">Descripción</label>
+                                <input type="text" id="serviceDescription">
+                            </div>
+                             <div class="form-group">
+                                <label for="serviceActive">Estado *</label>
+                                <select id="serviceActive" required>
+                                    <option value="1">Activo</option>
+                                    <option value="0">Inactivo</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div style="display: flex; gap: 1rem; margin-top: 1rem;">
+                            <button type="submit" class="btn-primary" style="background-color: #10b981; border-color: #059669;">
+                                <i class="fas fa-save"></i> Guardar
+                            </button>
+                            <button type="button" class="btn-secondary" onclick="cancelServiceForm()">
+                                <i class="fas fa-times"></i> Cancelar
+                            </button>
+                        </div>
+                    </form>
+                </div>
+
+                <table class="users-table">
+                    <thead>
+                        <tr>
+                            <th>Código</th>
+                            <th>Nombre</th>
+                            <th>Descripción</th>
+                            <th>Estado</th>
+                            <th>Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody id="servicesTableBody">
+                        <!-- Services will be loaded here -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Materials Panel -->
+        <div class="users-panel" id="materialsPanel" style="display: none;">
+            <div class="users-header" style="background: linear-gradient(135deg, #f59e0b, #b45309);">
+                <div>
+                    <h2 style="margin: 0; display: flex; align-items: center; gap: 0.5rem;">
+                        <i class="fas fa-box"></i> Gestión de Materiales
+                    </h2>
+                </div>
+                <div>
+                    <button class="toggle-whatsapp" onclick="toggleMaterialsPanel()">
+                        <i class="fas fa-times"></i> Cerrar
+                    </button>
+                </div>
+            </div>
+            <div class="users-content">
+                <div class="filter-actions" style="margin-bottom: 1.5rem;">
+                    <button class="btn-primary" onclick="showMaterialForm()" style="background-color: #f59e0b; border-color: #b45309;">
+                        <i class="fas fa-plus"></i> Nuevo Material
+                    </button>
+                </div>
+
+                <div id="materialFormContainer" style="display: none; background: #f9fafb; padding: 1.5rem; border-radius: 8px; margin-bottom: 1.5rem;">
+                    <h3 id="materialFormTitle">Nuevo Material</h3>
+                    <form id="materialForm" onsubmit="saveMaterial(event)">
+                        <input type="hidden" id="materialId">
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label for="materialName">Nombre *</label>
+                                <input type="text" id="materialName" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="materialPrice">Precio (€) *</label>
+                                <input type="number" id="materialPrice" step="0.01" required>
+                            </div>
+                            <div class="form-group" style="grid-column: 1 / -1;">
+                                <label for="materialDescription">Descripción</label>
+                                <input type="text" id="materialDescription">
+                            </div>
+                             <div class="form-group">
+                                <label for="materialActive">Estado *</label>
+                                <select id="materialActive" required>
+                                    <option value="1">Activo</option>
+                                    <option value="0">Inactivo</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div style="display: flex; gap: 1rem; margin-top: 1rem;">
+                            <button type="submit" class="btn-primary" style="background-color: #f59e0b; border-color: #b45309;">
+                                <i class="fas fa-save"></i> Guardar
+                            </button>
+                            <button type="button" class="btn-secondary" onclick="cancelMaterialForm()">
+                                <i class="fas fa-times"></i> Cancelar
+                            </button>
+                        </div>
+                    </form>
+                </div>
+
+                <table class="users-table">
+                    <thead>
+                        <tr>
+                            <th>Nombre</th>
+                            <th>Descripción</th>
+                            <th>Precio</th>
+                            <th>Estado</th>
+                            <th>Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody id="materialsTableBody">
+                        <!-- Materials will be loaded here -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Empresas Panel -->
+        <div class="users-panel" id="empresasPanel" style="display: none;">
+            <div class="users-header" style="background: linear-gradient(135deg, #6366f1, #4f46e5);">
+                <div>
+                    <h2 style="margin: 0; display: flex; align-items: center; gap: 0.5rem;">
+                        <i class="fas fa-building"></i> Gestión de Empresas
+                    </h2>
+                </div>
+                <div>
+                    <button class="toggle-whatsapp" onclick="toggleEmpresasPanel()">
+                        <i class="fas fa-times"></i> Cerrar
+                    </button>
+                </div>
+            </div>
+            <div class="users-content">
+                <div class="filter-actions" style="margin-bottom: 1.5rem;">
+                    <button class="btn-primary" onclick="showEmpresaForm()" style="background-color: #6366f1; border-color: #4f46e5;">
+                        <i class="fas fa-plus"></i> Nueva Empresa
+                    </button>
+                </div>
+
+                <div id="empresaFormContainer" style="display: none; background: #f9fafb; padding: 1.5rem; border-radius: 8px; margin-bottom: 1.5rem;">
+                    <h3 id="empresaFormTitle">Nueva Empresa</h3>
+                    <form id="empresaForm" onsubmit="saveEmpresa(event)">
+                        <input type="hidden" id="empresaId">
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label for="empresaNombre">Nombre *</label>
+                                <input type="text" id="empresaNombre" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="empresaCif">CIF/NIF</label>
+                                <input type="text" id="empresaCif">
+                            </div>
+                            <div class="form-group" style="grid-column: 1 / -1;">
+                                <label for="empresaDireccion">Dirección</label>
+                                <input type="text" id="empresaDireccion">
+                            </div>
+                            <div class="form-group">
+                                <label for="empresaTelefono">Teléfono</label>
+                                <input type="text" id="empresaTelefono">
+                            </div>
+                            <div class="form-group">
+                                <label for="empresaEmail">Email</label>
+                                <input type="email" id="empresaEmail">
+                            </div>
+                            <div class="form-group">
+                                <label for="empresaActive">Estado *</label>
+                                <select id="empresaActive" required>
+                                    <option value="1">Activa</option>
+                                    <option value="0">Inactiva</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div style="display: flex; gap: 1rem; margin-top: 1rem;">
+                            <button type="submit" class="btn-primary" style="background-color: #6366f1; border-color: #4f46e5;">
+                                <i class="fas fa-save"></i> Guardar
+                            </button>
+                            <button type="button" class="btn-secondary" onclick="cancelEmpresaForm()">
+                                <i class="fas fa-times"></i> Cancelar
+                            </button>
+                        </div>
+                    </form>
+                </div>
+
+                <table class="users-table">
+                    <thead>
+                        <tr>
+                            <th>Nombre</th>
+                            <th>CIF</th>
+                            <th>Dirección</th>
+                            <th>Teléfono</th>
+                            <th>Email</th>
+                            <th>Estado</th>
+                            <th>Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody id="empresasTableBody">
+                        <!-- Empresas will be loaded here -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
         <!-- Filters -->
         <div class="filters">
             <h2>Filtrar Tickets</h2>
@@ -919,14 +437,6 @@
                 <label>Servicio:</label>
                 <select class="filter-select" id="filterServicio">
                     <option value="todos">Todos los servicios</option>
-                    <option value="reparacion">Reparación de Equipos</option>
-                    <option value="redes">Montaje de Redes</option>
-                    <option value="impresoras">Soporte de Impresoras</option>
-                    <option value="seguridad">Seguridad Informática</option>
-                    <option value="errores">Detección de Errores</option>
-                    <option value="soporte">Soporte Técnico General</option>
-                    <option value="desarrollo_app">Programación de Aplicaciones Personalizadas</option>
-                    <option value="desarrollo_web">Desarrollo de Entornos Web</option>
                 </select>
             </div>
             <div class="filter-section">
@@ -981,6 +491,16 @@
         </div>
     </div>
 
+    <!-- Modal for invoice details -->
+    <div id="invoiceModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Detalles de la Factura</h2>
+                <button class="close-modal" onclick="closeInvoiceModal()"><i class="fas fa-times"></i></button>
+            </div>
+            <div id="invoiceDetails"></div>
+        </div>
+    </div>
     <!-- Modal for editing tickets -->
     <div id="editTicketModal" class="modal">
         <div class="modal-content">
@@ -1010,14 +530,13 @@
                     <div class="form-group">
                         <label>Servicio</label>
                         <select id="editTicketServicio" required>
-                            <option value="reparacion">Reparación de Equipos</option>
-                            <option value="redes">Montaje de Redes</option>
-                            <option value="impresoras">Soporte de Impresoras</option>
-                            <option value="seguridad">Seguridad Informática</option>
-                            <option value="errores">Detección de Errores</option>
-                            <option value="soporte">Soporte Técnico General</option>
-                            <option value="desarrollo_app">Programación de Aplicaciones</option>
-                            <option value="desarrollo_web">Desarrollo de Entornos Web</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Empresa</label>
+                        <select id="editTicketEmpresa">
+                            <option value="">Sin empresa</option>
                         </select>
                     </div>
                     
@@ -1027,7 +546,7 @@
                             <option value="baja">Baja</option>
                             <option value="media">Media</option>
                             <option value="alta">Alta</option>
-                            <option value="critica">Crítica</option>
+                            <option value="urgente">Urgente</option>
                         </select>
                     </div>
                     
@@ -1063,8 +582,6 @@
             </div>
         </div>
     </div>
-
-    <!-- Modal for creating tickets -->
     <div id="createTicketModal" class="modal">
         <div class="modal-content">
             <div class="modal-header">
@@ -1073,8 +590,9 @@
             </div>
             <div class="modal-body">
                 <form onsubmit="event.preventDefault(); saveNewTicket();">
+                    
                     <div class="form-group">
-                        <label>Cliente (Nombre)</label>
+                        <label>Cliente</label>
                         <input type="text" id="createTicketNombre" required>
                     </div>
                     
@@ -1091,15 +609,13 @@
                     <div class="form-group">
                         <label>Servicio</label>
                         <select id="createTicketServicio" required>
-                            <option value="">Selecciona un servicio...</option>
-                            <option value="reparacion">Reparación de Equipos</option>
-                            <option value="redes">Montaje de Redes</option>
-                            <option value="impresoras">Soporte de Impresoras</option>
-                            <option value="seguridad">Seguridad Informática</option>
-                            <option value="errores">Detección de Errores</option>
-                            <option value="soporte">Soporte Técnico General</option>
-                            <option value="desarrollo_app">Programación de Aplicaciones</option>
-                            <option value="desarrollo_web">Desarrollo de Entornos Web</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Empresa</label>
+                        <select id="createTicketEmpresa">
+                            <option value="">Sin empresa</option>
                         </select>
                     </div>
                     
@@ -1107,9 +623,9 @@
                         <label>Prioridad</label>
                         <select id="createTicketPrioridad" required>
                             <option value="baja">Baja</option>
-                            <option value="media">Media</option>
+                            <option value="media" selected>Media</option>
                             <option value="alta">Alta</option>
-                            <option value="critica">Crítica</option>
+                            <option value="urgente">Urgente</option>
                         </select>
                     </div>
                     
@@ -1130,1313 +646,43 @@
             </div>
         </div>
     </div>
-    <script>
-        let allTickets = [];
-        let filteredTickets = [];
-        let currentFilter = 'todos';
-        let currentServicioFilter = 'todos';
-        let currentPrioridadFilter = 'todos';
 
-        let currentUserRole = null;
-        let isAdmin = false;
-
-        // Load tickets on page load
-        document.addEventListener('DOMContentLoaded', () => {
-            checkUserRole();
-            loadTickets();
-            setupEventListeners();
-        });
-
-        // Check current user role
-        async function checkUserRole() {
-            try {
-                const response = await fetch('/api/session');
-                const session = await response.json();
-                
-                currentUserRole = session.rol;
-                isAdmin = session.isAdmin;
-                
-                applyPermissions();
-            } catch (error) {
-                console.error('Error checking user role:', error);
-            }
-        }
-
-        // Apply permissions based on user role
-        function applyPermissions() {
-            if (!isAdmin) {
-                // Ocultar botones de admin
-                const archivedBtn = document.querySelector('button[onclick*="loadArchivedTickets"]');
-                if (archivedBtn) {
-                    archivedBtn.style.display = 'none';
-                }
-                
-                // Ocultar todos los botones de delete
-                document.querySelectorAll('.btn-delete').forEach(btn => btn.style.display = 'none');
-                document.querySelectorAll('.btn-delete-note').forEach(btn => btn.style.display = 'none');
-                
-                // Ocultar botones en la tabla de usuarios
-                document.querySelectorAll('button[onclick*="deleteUser"]').forEach(btn => btn.style.display = 'none');
-                document.querySelectorAll('button[onclick*="editUser"]').forEach(btn => btn.style.display = 'none');
-                document.querySelectorAll('button[onclick*="deleteService"]').forEach(btn => btn.style.display = 'none');
-                document.querySelectorAll('button[onclick*="editService"]').forEach(btn => btn.style.display = 'none');
-            }
-        }
-
-        function setupEventListeners() {
-            // Filter buttons
-            document.querySelectorAll('.filter-btn').forEach(btn => {
-                btn.addEventListener('click', (e) => {
-                    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
-                    e.target.classList.add('active');
-                    currentFilter = e.target.dataset.filter;
-                    filterTickets();
-                });
-            });
-
-            // Servicio filter
-            document.getElementById('filterServicio').addEventListener('change', (e) => {
-                currentServicioFilter = e.target.value;
-                filterTickets();
-            });
-
-            // Prioridad filter
-            document.getElementById('filterPrioridad').addEventListener('change', (e) => {
-                currentPrioridadFilter = e.target.value;
-                filterTickets();
-            });
-
-            // Search box
-            document.getElementById('searchBox').addEventListener('input', (e) => {
-                searchTickets(e.target.value);
-            });
-        }
-
-        async function loadTickets() {
-            try {
-                const response = await fetch('/api/tickets');
-                
-                // Verificar si la sesión expiró
-                if (response.status === 401) {
-                    alert('Su sesión ha expirado. Por favor, inicie sesión nuevamente.');
-                    window.location.href = '/login';
-                    return;
-                }
-                
-                allTickets = await response.json();
-                updateStatistics();
-                filterTickets();
-            } catch (error) {
-                console.error('Error loading tickets:', error);
-                document.getElementById('ticketsTableContainer').innerHTML = `
-                    <div class="empty-state">
-                        <i class="fas fa-exclamation-triangle"></i>
-                        <p>Error al cargar los tickets</p>
-                    </div>
-                `;
-            }
-        }
-
-        // Load archived tickets
-        async function loadArchivedTickets() {
-            try {
-                const response = await fetch('/api/tickets/archived/list');
-                
-                if (response.status === 401) {
-                    alert('Su sesión ha expirado. Por favor, inicie sesión nuevamente.');
-                    window.location.href = '/login';
-                    return;
-                }
-                
-                if (response.status === 403) {
-                    alert('Solo administradores pueden ver tickets archivados');
-                    return;
-                }
-                
-                const archivedTickets = await response.json();
-                renderArchivedTickets(archivedTickets);
-            } catch (error) {
-                console.error('Error loading archived tickets:', error);
-                document.getElementById('ticketsTableContainer').innerHTML = `
-                    <div class="empty-state">
-                        <i class="fas fa-exclamation-triangle"></i>
-                        <p>Error al cargar los tickets archivados</p>
-                    </div>
-                `;
-            }
-        }
-
-        function renderArchivedTickets(tickets) {
-            const container = document.getElementById('ticketsTableContainer');
-            
-            if (tickets.length === 0) {
-                container.innerHTML = `
-                    <div class="empty-state">
-                        <i class="fas fa-archive"></i>
-                        <p>No hay tickets archivados</p>
-                    </div>
-                `;
-                return;
-            }
-
-            const servicios = {
-                'reparacion': 'Reparación',
-                'redes': 'Redes',
-                'impresoras': 'Impresoras',
-                'seguridad': 'Seguridad',
-                'errores': 'Errores',
-                'soporte': 'Soporte'
-            };
-
-            const html = `
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Ticket ID</th>
-                            <th>Cliente</th>
-                            <th>Servicio</th>
-                            <th>Prioridad</th>
-                            <th>Estado</th>
-                            <th>Archivado Por</th>
-                            <th>Fecha Archivado</th>
-                            <th>Acciones</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${tickets.map(ticket => `
-                            <tr>
-                                <td><strong>${ticket.ticket_id}</strong></td>
-                                <td>${ticket.nombre}</td>
-                                <td>${servicios[ticket.servicio] || ticket.servicio}</td>
-                                <td><span class="badge badge-${ticket.prioridad}">${ticket.prioridad}</span></td>
-                                <td><span class="badge badge-${ticket.estado}">${ticket.estado.replace('_', ' ')}</span></td>
-                                <td>${ticket.usuario_archivado || '-'}</td>
-                                <td>${new Date(ticket.fecha_archivado).toLocaleString('es-ES')}</td>
-                                <td>
-                                    <div class="action-btns">
-                                        <button class="btn-small btn-restore" onclick="restoreTicket('${ticket.ticket_id}')" style="background: #10b981;">
-                                            <i class="fas fa-undo"></i> Restaurar
-                                        </button>
-                                    </div>
-                                </td>
-                            </tr>
-                        `).join('')}
-                    </tbody>
-                </table>
-            `;
-            
-            container.innerHTML = html;
-            applyPermissions();
-        }
-
-        function updateStatistics() {
-            document.getElementById('stat-total').textContent = allTickets.length;
-            document.getElementById('stat-pendiente').textContent = 
-                allTickets.filter(t => t.estado === 'pendiente').length;
-            document.getElementById('stat-en-proceso').textContent = 
-                allTickets.filter(t => t.estado === 'en_proceso').length;
-            document.getElementById('stat-resuelto').textContent = 
-                allTickets.filter(t => t.estado === 'resuelto').length;
-        }
-
-        function filterTickets() {
-            filteredTickets = allTickets;
-            
-            // Filter by status
-            if (currentFilter !== 'todos') {
-                filteredTickets = filteredTickets.filter(t => t.estado === currentFilter);
-            }
-            
-            // Filter by service
-            if (currentServicioFilter !== 'todos') {
-                filteredTickets = filteredTickets.filter(t => t.servicio === currentServicioFilter);
-            }
-            
-            // Filter by priority
-            if (currentPrioridadFilter !== 'todos') {
-                filteredTickets = filteredTickets.filter(t => t.prioridad === currentPrioridadFilter);
-            }
-            
-            renderTicketsTable();
-        }
-
-        function searchTickets(query) {
-            const lowerQuery = query.toLowerCase();
-            filteredTickets = allTickets.filter(t => 
-                t.ticket_id.toLowerCase().includes(lowerQuery) ||
-                t.nombre.toLowerCase().includes(lowerQuery) ||
-                t.email.toLowerCase().includes(lowerQuery) ||
-                t.descripcion.toLowerCase().includes(lowerQuery)
-            );
-            renderTicketsTable();
-        }
-
-        function renderTicketsTable() {
-            const container = document.getElementById('ticketsTableContainer');
-            
-            if (filteredTickets.length === 0) {
-                container.innerHTML = `
-                    <div class="empty-state">
-                        <i class="fas fa-inbox"></i>
-                        <p>No hay tickets para mostrar</p>
-                    </div>
-                `;
-                applyPermissions();
-                return;
-            }
-
-            const servicios = {
-                'reparacion': 'Reparación',
-                'redes': 'Redes',
-                'impresoras': 'Impresoras',
-                'seguridad': 'Seguridad',
-                'errores': 'Errores',
-                'soporte': 'Soporte'
-            };
-
-            const html = `
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Ticket ID</th>
-                            <th>Cliente</th>
-                            <th>Servicio</th>
-                            <th>Prioridad</th>
-                            <th>Estado</th>
-                            <th>Fecha</th>
-                            <th>Acciones</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${filteredTickets.map(ticket => `
-                            <tr>
-                                <td><strong>${ticket.ticket_id}</strong></td>
-                                <td>
-                                    ${ticket.nombre}
-                                    ${ticket.tecnico_asignado ? `<br><small style="color: #2563eb;"><i class="fas fa-user"></i> ${ticket.tecnico_asignado}</small>` : ''}
-                                </td>
-                                <td>${servicios[ticket.servicio] || ticket.servicio}</td>
-                                <td><span class="badge badge-${ticket.prioridad}">${ticket.prioridad}</span></td>
-                                <td><span class="badge badge-${ticket.estado}">${ticket.estado.replace('_', ' ')}</span></td>
-                                <td>${new Date(ticket.fecha_creacion).toLocaleDateString('es-ES')}</td>
-                                <td>
-                                    <div class="action-btns">
-                                        <button class="btn-small btn-view" onclick="viewTicket('${ticket.ticket_id}')">
-                                            <i class="fas fa-eye"></i> Ver
-                                        </button>
-                                        <button class="btn-small btn-edit" onclick="editTicket('${ticket.ticket_id}')">
-                                            <i class="fas fa-edit"></i> Editar
-                                        </button>
-                                        <button class="btn-small btn-delete" onclick="deleteTicket('${ticket.ticket_id}')">
-                                            <i class="fas fa-trash"></i> Borrar
-                                        </button>
-                                        <button class="btn-whatsapp-quick" onclick="openWhatsApp('${ticket.telefono}', '${ticket.ticket_id}', '${ticket.nombre}')">
-                                            <i class="fab fa-whatsapp"></i>
-                                        </button>
-                                    </div>
-                                </td>
-                            </tr>
-                        `).join('')}
-                    </tbody>
-                </table>
-            `;
-            
-            container.innerHTML = html;
-            applyPermissions();
-        }
-
-        async function viewTicket(ticketId) {
-            try {
-                const [ticketResponse, notesResponse, whatsappResponse, horasResponse] = await Promise.all([
-                    fetch(`/api/tickets/${ticketId}`),
-                    fetch(`/api/tickets/${ticketId}/notes`),
-                    fetch(`/api/tickets/${ticketId}/whatsapp`),
-                    fetch(`/api/tickets/${ticketId}/horas`)
-                ]);
-                
-                const ticket = await ticketResponse.json();
-                const notes = await notesResponse.json();
-                const whatsappContacts = await whatsappResponse.json();
-                const horasData = await horasResponse.json();
-                
-                const servicios = {
-                    'reparacion': 'Reparación de Equipos',
-                    'redes': 'Montaje de Redes',
-                    'impresoras': 'Soporte de Impresoras',
-                    'seguridad': 'Seguridad Informática',
-                    'errores': 'Detección de Errores',
-                    'soporte': 'Soporte Técnico General',
-                    'desarrollo_app': 'Programación de Aplicaciones Personalizadas',
-                    'desarrollo_web': 'Desarrollo de Entornos Web'
-                };
-
-                const notesHtml = notes.length > 0 ? notes.map(note => `
-                    <div class="note-item">
-                        <div class="note-header">
-                            <div>
-                                <strong>${note.autor}</strong>
-                                <span>${new Date(note.fecha_creacion).toLocaleString('es-ES')}</span>
-                            </div>
-                            <button class="btn-delete-note" onclick="deleteNoteFromTicket(${note.id})" title="Eliminar nota">
-                                <i class="fas fa-trash"></i>
-                            </button>
-                        </div>
-                        <div class="note-text">${note.nota}</div>
-                    </div>
-                `).join('') : '<p style="color: #6b7280;">No hay notas aún</p>';
-
-                const horasHtml = horasData.horas && horasData.horas.length > 0 ? horasData.horas.map(hora => `
-                    <div class="hora-item">
-                        <div class="hora-header">
-                            <div>
-                                <strong>${hora.tecnico_nombre}</strong>
-                                <span>${hora.horas}h</span>
-                                <small>${new Date(hora.fecha_registro).toLocaleString('es-ES')}</small>
-                            </div>
-                            <button class="btn-delete-note" onclick="deleteHoraTrabajo(${hora.id}, '${ticket.ticket_id}')" title="Eliminar">
-                                <i class="fas fa-trash"></i>
-                            </button>
-                        </div>
-                        ${hora.descripcion ? `<div class="nota-text">${hora.descripcion}</div>` : ''}
-                    </div>
-                `).join('') : '<p style="color: #6b7280;">Sin registros de horas</p>';
-                
-                const resumenHoras = horasData.porTecnico && horasData.porTecnico.length > 0 ? horasData.porTecnico.map(t => `
-                    <div style="padding: 0.5rem; background: #f3f4f6; border-radius: 4px; margin-bottom: 0.5rem;">
-                        <strong>${t.tecnico_nombre}:</strong> ${t.total_horas}h (${t.registros} registro${t.registros > 1 ? 's' : ''})
-                    </div>
-                `).join('') : '';
-
-                const whatsappHistoryHtml = whatsappContacts.length > 0 ? whatsappContacts.map(contact => `
-                    <div class="whatsapp-contact-item">
-                        <strong>${contact.enviado_por}</strong> contactó al cliente
-                        ${contact.mensaje ? `<br>Mensaje: "${contact.mensaje}"` : ''}
-                        <br><small>${new Date(contact.fecha_contacto).toLocaleString('es-ES')}</small>
-                    </div>
-                `).join('') : '<p style="color: rgba(255,255,255,0.7); font-size: 0.9rem;">No hay contactos previos</p>';
-
-                document.getElementById('ticketDetails').innerHTML = `
-                    <div class="detail-row">
-                        <div class="detail-label">Ticket ID</div>
-                        <div><strong>${ticket.ticket_id}</strong></div>
-                    </div>
-                    <div class="detail-row">
-                        <div class="detail-label">Cliente</div>
-                        <div>${ticket.nombre}</div>
-                    </div>
-                    <div class="detail-row">
-                        <div class="detail-label">Email</div>
-                        <div>${ticket.email}</div>
-                    </div>
-                    <div class="detail-row">
-                        <div class="detail-label">Teléfono</div>
-                        <div>${ticket.telefono}</div>
-                    </div>
-                    <div class="detail-row">
-                        <div class="detail-label">Servicio</div>
-                        <div>${servicios[ticket.servicio]}</div>
-                    </div>
-                    <div class="detail-row">
-                        <div class="detail-label">Prioridad</div>
-                        <div><span class="badge badge-${ticket.prioridad}">${ticket.prioridad}</span></div>
-                    </div>
-                    <div class="detail-row">
-                        <div class="detail-label">Descripción</div>
-                        <div>${ticket.descripcion}</div>
-                    </div>
-                    <div class="detail-row">
-                        <div class="detail-label">Fecha de Creación</div>
-                        <div>${new Date(ticket.fecha_creacion).toLocaleString('es-ES')}</div>
-                    </div>
-
-                    <div class="whatsapp-section">
-                        <h3><i class="fab fa-whatsapp"></i> Contactar por WhatsApp</h3>
-                        <div class="whatsapp-templates">
-                            <button class="template-btn" onclick="setWhatsAppMessage('Hola ${ticket.nombre}, somos del servicio técnico. Hemos recibido tu solicitud ${ticket.ticket_id} sobre ${servicios[ticket.servicio]}. ¿En qué momento podemos visitarte?')">
-                                📅 Solicitar visita
-                            </button>
-                            <button class="template-btn" onclick="setWhatsAppMessage('Hola ${ticket.nombre}, te informamos que estamos trabajando en tu caso ${ticket.ticket_id}. Te mantendremos informado del progreso.')">
-                                🔧 Actualización de estado
-                            </button>
-                            <button class="template-btn" onclick="setWhatsAppMessage('Hola ${ticket.nombre}, tu caso ${ticket.ticket_id} ha sido resuelto. ¿Podrías confirmar que todo funciona correctamente?')">
-                                ✅ Caso resuelto
-                            </button>
-                            <button class="template-btn" onclick="setWhatsAppMessage('Hola ${ticket.nombre}, necesitamos más información sobre tu caso ${ticket.ticket_id}. ¿Podrías proporcionarnos más detalles?')">
-                                ℹ️ Solicitar información
-                            </button>
-                        </div>
-                        <textarea class="custom-message" id="whatsappMessage" placeholder="Escribe un mensaje personalizado o selecciona una plantilla..."></textarea>
-                        <input type="text" id="tecnicoWhatsApp" placeholder="Tu nombre (técnico)" style="width: 100%; padding: 0.75rem; border: 2px solid rgba(255,255,255,0.3); border-radius: 5px; background: rgba(255,255,255,0.2); color: white; margin-bottom: 1rem;">
-                        <button class="btn-whatsapp" onclick="sendWhatsApp('${ticket.telefono}', '${ticket.ticket_id}', '${ticket.nombre}')">
-                            <i class="fab fa-whatsapp"></i> Abrir WhatsApp y Enviar Mensaje
-                        </button>
-                        <div class="whatsapp-history">
-                            <strong>Historial de Contactos:</strong>
-                            <div style="margin-top: 0.5rem;">
-                                ${whatsappHistoryHtml}
-                            </div>
-                        </div>
+    <!-- Modal for transferring ticket to another empresa -->
+    <div id="transferEmpresaModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Transferir Ticket a Otra Empresa</h2>
+                <button class="close-modal" onclick="closeTransferEmpresaModal()"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="modal-body">
+                <form onsubmit="event.preventDefault(); transferirTicketEmpresa();">
+                    <div class="form-group">
+                        <label>Empresa Actual</label>
+                        <input type="text" id="currentEmpresaName" readonly style="background: #f3f4f6;">
                     </div>
                     
-                    <div class="assignment-section">
-                        <div class="detail-label"><i class="fas fa-user"></i> Asignar Técnico</div>
-                        <input type="text" id="tecnicoInput" placeholder="Nombre del técnico" value="${ticket.tecnico_asignado || ''}" style="width: 100%; padding: 0.5rem; border: 2px solid #e5e7eb; border-radius: 5px; margin-top: 0.5rem;">
-                        <button class="btn-update-status" onclick="assignTechnicianToTicket('${ticket.ticket_id}')" style="background: #f59e0b; margin-top: 0.5rem;">
-                            <i class="fas fa-user-check"></i> Asignar Técnico
-                        </button>
-                    </div>
-                    
-                    <div class="notes-section">
-                        <h3><i class="fas fa-clock"></i> Horas de Trabajo</h3>
-                        ${resumenHoras ? `<div style="margin-bottom: 1rem; padding: 1rem; background: #f0fdf4; border-left: 4px solid #10b981; border-radius: 4px;">
-                            <strong>Total: ${horasData.total}h</strong>
-                            ${resumenHoras}
-                        </div>` : ''}
-                        <div style="max-height: 250px; overflow-y: auto; margin-top: 1rem;">
-                            ${horasHtml}
-                        </div>
-                        <div class="add-note-form">
-                            <input type="number" id="tecnicoId" placeholder="ID Usuario" min="0" step="1" style="width: 48%; margin-right: 4%;">
-                            <input type="text" id="tecnicoNombre" placeholder="Nombre del técnico" style="width: 48%;">
-                            <input type="number" id="horasTrabajadas" placeholder="Horas trabajadas" min="0.25" step="0.25" style="width: 100%;">
-                            <textarea id="descripcionHoras" placeholder="Descripción del trabajo realizado..." style="height: 60px;"></textarea>
-                            <button class="btn-add-note" onclick="addHorasTrabajo('${ticket.ticket_id}')">
-                                <i class="fas fa-plus"></i> Registrar Horas
-                            </button>
-                        </div>
-                    </div>
-                    
-                    <div class="notes-section">
-                        <h3><i class="fas fa-comment"></i> Notas Internas</h3>
-                        <div style="max-height: 300px; overflow-y: auto; margin-top: 1rem;">
-                            ${notesHtml}
-                        </div>
-                        <div class="add-note-form">
-                            <input type="text" id="autorNota" placeholder="Tu nombre" style="width: 100%;">
-                            <textarea id="nuevaNota" placeholder="Escribe una nota interna..."></textarea>
-                            <button class="btn-add-note" onclick="addNote('${ticket.ticket_id}')">
-                                <i class="fas fa-plus"></i> Añadir Nota
-                            </button>
-                        </div>
-                    </div>
-                    
-                    <div class="status-selector">
-                        <div class="detail-label">Actualizar Estado</div>
-                        <select id="statusSelect">
-                            <option value="pendiente" ${ticket.estado === 'pendiente' ? 'selected' : ''}>Pendiente</option>
-                            <option value="en_proceso" ${ticket.estado === 'en_proceso' ? 'selected' : ''}>En Proceso</option>
-                            <option value="resuelto" ${ticket.estado === 'resuelto' ? 'selected' : ''}>Resuelto</option>
-                            <option value="cerrado" ${ticket.estado === 'cerrado' ? 'selected' : ''}>Cerrado</option>
+                    <div class="form-group">
+                        <label>Nueva Empresa</label>
+                        <select id="targetEmpresaId" required>
+                            <option value="">Seleccionar empresa...</option>
                         </select>
-                        <button class="btn-update-status" onclick="updateTicketStatus('${ticket.ticket_id}')">
-                            <i class="fas fa-save"></i> Actualizar Estado
+                    </div>
+                    
+                    <input type="hidden" id="transferTicketId">
+                    
+                    <div style="display: flex; gap: 1rem; justify-content: flex-end; margin-top: 1.5rem;">
+                        <button type="button" class="btn" style="background: #6b7280;" onclick="closeTransferEmpresaModal()">
+                            Cancelar
+                        </button>
+                        <button type="submit" class="btn" style="background: #3b82f6;">
+                            <i class="fas fa-exchange-alt"></i> Transferir
                         </button>
                     </div>
-                `;
-                
-                document.getElementById('ticketModal').classList.add('active');
-            } catch (error) {
-                console.error('Error loading ticket details:', error);
-            }
-        }
-
-        async function updateTicketStatus(ticketId) {
-            const newStatus = document.getElementById('statusSelect').value;
-            
-            try {
-                const response = await fetch(`/api/tickets/${ticketId}/status`, {
-                    method: 'PATCH',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ estado: newStatus })
-                });
-
-                if (response.ok) {
-                    alert('Estado actualizado correctamente');
-                    closeModal();
-                    loadTickets();
-                } else {
-                    alert('Error al actualizar el estado');
-                }
-            } catch (error) {
-                console.error('Error updating status:', error);
-                alert('Error al actualizar el estado');
-            }
-        }
-
-        function closeModal() {
-            document.getElementById('ticketModal').classList.remove('active');
-        }
-
-        async function addNote(ticketId) {
-            const nota = document.getElementById('nuevaNota').value;
-            const autor = document.getElementById('autorNota').value;
-            
-            if (!nota || !autor) {
-                alert('Por favor completa todos los campos');
-                return;
-            }
-            
-            try {
-                const response = await fetch(`/api/tickets/${ticketId}/notes`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ nota, autor })
-                });
-                
-                if (response.ok) {
-                    document.getElementById('nuevaNota').value = '';
-                    document.getElementById('autorNota').value = '';
-                    viewTicket(ticketId); // Reload ticket to show new note
-                } else {
-                    alert('Error al añadir nota');
-                }
-            } catch (error) {
-                console.error('Error adding note:', error);
-                alert('Error al añadir nota');
-            }
-        }
-
-        // Delete note
-        async function deleteNoteFromTicket(noteId) {
-            if (!confirm('¿Está seguro que desea archivar esta nota? Se oculará pero podrá recuperarse.')) {
-                return;
-            }
-            
-            try {
-                const response = await fetch(`/api/notes/${noteId}`, {
-                    method: 'DELETE'
-                });
-                
-                const result = await response.json();
-                
-                if (response.ok) {
-                    alert('Nota archivada exitosamente');
-                    // Reload the current ticket
-                    const ticketId = document.querySelector('input[type="hidden"][id*="ticket"]')?.value;
-                    if (ticketId) {
-                        viewTicket(ticketId);
-                    }
-                } else if (response.status === 403) {
-                    alert('Solo administradores pueden archivar notas');
-                } else {
-                    alert('Error: ' + result.error);
-                }
-            } catch (error) {
-                alert('Error al archivar nota: ' + error.message);
-            }
-        }
-
-        // ==================== HORAS DE TRABAJO ====================
-
-        async function addHorasTrabajo(ticketId) {
-            const tecnicoId = document.getElementById('tecnicoId').value;
-            const tecnicoNombre = document.getElementById('tecnicoNombre').value;
-            const horas = parseFloat(document.getElementById('horasTrabajadas').value);
-            const descripcion = document.getElementById('descripcionHoras').value;
-            
-            if (!tecnicoId || !tecnicoNombre || !horas || horas <= 0) {
-                alert('Por favor completa todos los campos requeridos');
-                return;
-            }
-            
-            try {
-                const response = await fetch(`/api/tickets/${ticketId}/horas`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ 
-                        usuarioId: parseInt(tecnicoId),
-                        tecnicoNombre, 
-                        horas, 
-                        descripcion 
-                    })
-                });
-                
-                if (response.ok) {
-                    alert('Horas registradas exitosamente');
-                    document.getElementById('tecnicoId').value = '';
-                    document.getElementById('tecnicoNombre').value = '';
-                    document.getElementById('horasTrabajadas').value = '';
-                    document.getElementById('descripcionHoras').value = '';
-                    viewTicket(ticketId);
-                } else {
-                    const result = await response.json();
-                    alert('Error: ' + result.error);
-                }
-            } catch (error) {
-                console.error('Error registrando horas:', error);
-                alert('Error al registrar horas');
-            }
-        }
-
-        async function deleteHoraTrabajo(horaId, ticketId) {
-            if (!confirm('¿Está seguro que desea eliminar este registro de horas?')) {
-                return;
-            }
-            
-            try {
-                const response = await fetch(`/api/tickets/horas/${horaId}`, {
-                    method: 'DELETE'
-                });
-                
-                if (response.ok) {
-                    alert('Registro de horas eliminado');
-                    viewTicket(ticketId);
-                } else if (response.status === 403) {
-                    alert('Solo administradores pueden eliminar registros de horas');
-                } else {
-                    const result = await response.json();
-                    alert('Error: ' + result.error);
-                }
-            } catch (error) {
-                console.error('Error eliminando horas:', error);
-                alert('Error al eliminar horas');
-            }
-        }
-
-        async function assignTechnicianToTicket(ticketId) {
-            const tecnico = document.getElementById('tecnicoInput').value;
-            
-            if (!tecnico) {
-                alert('Por favor ingresa el nombre del técnico');
-                return;
-            }
-            
-            try {
-                const response = await fetch(`/api/tickets/${ticketId}/assign`, {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ tecnico })
-                });
-                
-                if (response.ok) {
-                    alert('Técnico asignado correctamente');
-                    closeModal();
-                    loadTickets();
-                } else {
-                    alert('Error al asignar técnico');
-                }
-            } catch (error) {
-                console.error('Error assigning technician:', error);
-                alert('Error al asignar técnico');
-            }
-        }
-
-        function exportToCSV() {
-            if (filteredTickets.length === 0) {
-                alert('No hay tickets para exportar');
-                return;
-            }
-
-            const servicios = {
-                'reparacion': 'Reparación de Equipos',
-                'redes': 'Montaje de Redes',
-                'impresoras': 'Soporte de Impresoras',
-                'seguridad': 'Seguridad Informática',
-                'errores': 'Detección de Errores',
-                'soporte': 'Soporte Técnico General',
-                'desarrollo_app': 'Programación de Aplicaciones Personalizadas',
-                'desarrollo_web': 'Desarrollo de Entornos Web'
-            };
-
-            const headers = ['Ticket ID', 'Cliente', 'Email', 'Teléfono', 'Servicio', 'Prioridad', 'Estado', 'Técnico Asignado', 'Descripción', 'Fecha'];
-            const rows = filteredTickets.map(ticket => [
-                ticket.ticket_id,
-                ticket.nombre,
-                ticket.email,
-                ticket.telefono,
-                servicios[ticket.servicio] || ticket.servicio,
-                ticket.prioridad,
-                ticket.estado,
-                ticket.tecnico_asignado || 'No asignado',
-                ticket.descripcion.replace(/,/g, ';'),
-                new Date(ticket.fecha_creacion).toLocaleString('es-ES')
-            ]);
-
-            const csv = [headers, ...rows].map(row => row.map(cell => `"${cell}"`).join(',')).join('\n');
-            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-            const link = document.createElement('a');
-            link.href = URL.createObjectURL(blob);
-            link.download = `tickets_${new Date().toISOString().split('T')[0]}.csv`;
-            link.click();
-        }
-
-        function setWhatsAppMessage(message) {
-            document.getElementById('whatsappMessage').value = message;
-        }
-
-        function formatPhoneNumber(phone) {
-            // Remove all non-numeric characters
-            let cleaned = phone.replace(/\D/g, '');
-            
-            // If starts with 0, assume it's a national number and add country code
-            if (cleaned.startsWith('0')) {
-                cleaned = '34' + cleaned.substring(1); // Spain country code
-            }
-            
-            // If doesn't start with country code, add Spain code
-            if (!cleaned.startsWith('34') && cleaned.length < 11) {
-                cleaned = '34' + cleaned;
-            }
-            
-            return cleaned;
-        }
-
-        async function sendWhatsApp(phone, ticketId, clientName) {
-            const message = document.getElementById('whatsappMessage').value;
-            const tecnico = document.getElementById('tecnicoWhatsApp').value;
-            
-            if (!tecnico) {
-                alert('Por favor ingresa tu nombre');
-                return;
-            }
-
-            const formattedPhone = formatPhoneNumber(phone);
-            const encodedMessage = encodeURIComponent(message || `Hola ${clientName}, te contacto por tu ticket ${ticketId}.`);
-            const whatsappUrl = `https://wa.me/${formattedPhone}?text=${encodedMessage}`;
-            
-            // Register contact in database
-            try {
-                await fetch(`/api/tickets/${ticketId}/whatsapp`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ 
-                        telefono: phone, 
-                        mensaje: message || `Hola ${clientName}, te contacto por tu ticket ${ticketId}.`,
-                        enviado_por: tecnico 
-                    })
-                });
-            } catch (error) {
-                console.error('Error registering WhatsApp contact:', error);
-            }
-            
-            // Open WhatsApp
-            window.open(whatsappUrl, '_blank');
-            
-            // Reload ticket to show new contact
-            setTimeout(() => viewTicket(ticketId), 1000);
-        }
-
-        function openWhatsApp(phone, ticketId, clientName) {
-            const formattedPhone = formatPhoneNumber(phone);
-            const message = `Hola ${clientName}, te contacto por tu ticket ${ticketId}. ¿En qué puedo ayudarte?`;
-            const encodedMessage = encodeURIComponent(message);
-            const whatsappUrl = `https://wa.me/${formattedPhone}?text=${encodedMessage}`;
-            
-            window.open(whatsappUrl, '_blank');
-        }
-
-        // Edit ticket
-        async function editTicket(ticketId) {
-            try {
-                const response = await fetch(`/api/tickets/${ticketId}`);
-                const ticket = await response.json();
-                
-                const servicios = {
-                    'reparacion': 'Reparación de Equipos',
-                    'redes': 'Montaje de Redes',
-                    'impresoras': 'Soporte de Impresoras',
-                    'seguridad': 'Seguridad Informática',
-                    'errores': 'Detección de Errores',
-                    'soporte': 'Soporte Técnico General',
-                    'desarrollo_app': 'Programación de Aplicaciones Personalizadas',
-                    'desarrollo_web': 'Desarrollo de Entornos Web'
-                };
-                
-                document.getElementById('editTicketId').value = ticketId;
-                document.getElementById('editTicketNombre').value = ticket.nombre;
-                document.getElementById('editTicketEmail').value = ticket.email;
-                document.getElementById('editTicketTelefono').value = ticket.telefono;
-                document.getElementById('editTicketServicio').value = ticket.servicio;
-                document.getElementById('editTicketPrioridad').value = ticket.prioridad;
-                document.getElementById('editTicketEstado').value = ticket.estado;
-                document.getElementById('editTicketTecnico').value = ticket.tecnico_asignado || '';
-                document.getElementById('editTicketDescripcion').value = ticket.descripcion;
-                
-                document.getElementById('editTicketModal').style.display = 'block';
-            } catch (error) {
-                alert('Error al cargar el ticket: ' + error.message);
-            }
-        }
-
-        // Save edited ticket
-        async function saveTicketEdit() {
-            const ticketId = document.getElementById('editTicketId').value;
-            
-            const ticketData = {
-                nombre: document.getElementById('editTicketNombre').value,
-                email: document.getElementById('editTicketEmail').value,
-                telefono: document.getElementById('editTicketTelefono').value,
-                servicio: document.getElementById('editTicketServicio').value,
-                prioridad: document.getElementById('editTicketPrioridad').value,
-                estado: document.getElementById('editTicketEstado').value,
-                tecnico_asignado: document.getElementById('editTicketTecnico').value,
-                descripcion: document.getElementById('editTicketDescripcion').value
-            };
-            
-            try {
-                const response = await fetch(`/api/tickets/${ticketId}`, {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(ticketData)
-                });
-                
-                const result = await response.json();
-                
-                if (response.ok) {
-                    alert('Ticket actualizado exitosamente');
-                    document.getElementById('editTicketModal').style.display = 'none';
-                    loadTickets();
-                } else {
-                    alert('Error: ' + result.error);
-                }
-            } catch (error) {
-                alert('Error al actualizar ticket: ' + error.message);
-            }
-        }
-
-        // Archive ticket (soft delete)
-        async function deleteTicket(ticketId) {
-            if (!confirm(`¿Está seguro que desea archivar el ticket ${ticketId}? Se ocultará pero podrá recuperarse.`)) {
-                return;
-            }
-            
-            try {
-                const response = await fetch(`/api/tickets/${ticketId}`, {
-                    method: 'DELETE'
-                });
-                
-                const result = await response.json();
-                
-                if (response.ok) {
-                    alert('Ticket archivado exitosamente');
-                    loadTickets();
-                } else if (response.status === 403) {
-                    alert('Solo administradores pueden archivar tickets');
-                } else {
-                    alert('Error: ' + result.error);
-                }
-            } catch (error) {
-                alert('Error al archivar ticket: ' + error.message);
-            }
-        }
-
-        // Restore ticket from archive
-        async function restoreTicket(ticketId) {
-            try {
-                const response = await fetch(`/api/tickets/${ticketId}/restore`, {
-                    method: 'POST'
-                });
-                
-                const result = await response.json();
-                
-                if (response.ok) {
-                    alert('Ticket restaurado exitosamente');
-                    loadArchivedTickets();
-                } else {
-                    alert('Error: ' + result.error);
-                }
-            } catch (error) {
-                alert('Error al restaurar ticket: ' + error.message);
-            }
-        }
-
-        // Auto-refresh every 30 seconds
-        setInterval(loadTickets, 30000);
-
-        // Logout function
-        async function logout() {
-            if (confirm('¿Está seguro que desea cerrar sesión?')) {
-                try {
-                    await fetch('/api/logout', { method: 'POST' });
-                    window.location.href = '/login';
-                } catch (error) {
-                    console.error('Error al cerrar sesión:', error);
-                    window.location.href = '/login';
-                }
-            }
-        }
-
-        // Close modal functions
-        function closeEditTicketModal() {
-            document.getElementById('editTicketModal').style.display = 'none';
-        }
-
-        function closeCreateTicketModal() {
-            document.getElementById('createTicketModal').style.display = 'none';
-        }
-
-        function openCreateTicketModal() {
-            document.getElementById('createTicketModal').style.display = 'block';
-        }
-
-        // Create new ticket
-        async function saveNewTicket() {
-            const ticketData = {
-                nombre: document.getElementById('createTicketNombre').value,
-                email: document.getElementById('createTicketEmail').value,
-                telefono: document.getElementById('createTicketTelefono').value,
-                servicio: document.getElementById('createTicketServicio').value,
-                prioridad: document.getElementById('createTicketPrioridad').value,
-                descripcion: document.getElementById('createTicketDescripcion').value
-            };
-            
-            try {
-                const response = await fetch('/api/tickets', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(ticketData)
-                });
-                
-                const result = await response.json();
-                
-                if (response.ok) {
-                    alert('Ticket creado exitosamente: ' + result.ticketId);
-                    document.getElementById('createTicketModal').style.display = 'none';
-                    // Clear form
-                    document.getElementById('createTicketNombre').value = '';
-                    document.getElementById('createTicketEmail').value = '';
-                    document.getElementById('createTicketTelefono').value = '';
-                    document.getElementById('createTicketServicio').value = '';
-                    document.getElementById('createTicketPrioridad').value = 'media';
-                    document.getElementById('createTicketDescripcion').value = '';
-                    loadTickets();
-                } else {
-                    alert('Error: ' + result.error);
-                }
-            } catch (error) {
-                alert('Error al crear ticket: ' + error.message);
-            }
-        }
-
-        window.onclick = function(event) {
-            const ticketModal = document.getElementById('editTicketModal');
-            const createModal = document.getElementById('createTicketModal');
-            if (event.target === ticketModal) {
-                ticketModal.style.display = 'none';
-            }
-            if (event.target === createModal) {
-                createModal.style.display = 'none';
-            }
-        }
-
-        // ==================== GESTIÓN DE USUARIOS ====================
-
-        function toggleUsersPanel() {
-            const panel = document.getElementById('usersPanel');
-            const isVisible = panel.style.display !== 'none';
-            panel.style.display = isVisible ? 'none' : 'block';
-            
-            if (!isVisible) {
-                loadUsers();
-            }
-        }
-
-        function toggleBackupsPanel() {
-            const panel = document.getElementById('backupsPanel');
-            const isVisible = panel.style.display !== 'none';
-            panel.style.display = isVisible ? 'none' : 'block';
-            
-            if (!isVisible) {
-                loadBackups();
-            }
-        }
-
-        async function loadBackups() {
-            try {
-                const response = await fetch('/api/backups');
-                const data = await response.json();
-                const backupsList = document.getElementById('backupsList');
-                
-                if (!data.backups || data.backups.length === 0) {
-                    backupsList.innerHTML = '<div style="text-align: center; padding: 2rem; color: #6b7280;">No hay backups disponibles</div>';
-                    return;
-                }
-                
-                backupsList.innerHTML = data.backups.map(backup => `
-                    <div style="border: 1px solid #e5e7eb; border-radius: 8px; padding: 1rem; background: white;">
-                        <div style="display: flex; justify-content: space-between; align-items: start;">
-                            <div style="flex: 1;">
-                                <h4 style="margin: 0 0 0.5rem 0;">📦 ${backup.name}</h4>
-                                <p style="margin: 0 0 0.25rem 0; font-size: 0.875rem; color: #6b7280;">
-                                    <strong>Tamaño:</strong> ${backup.sizeReadable}
-                                </p>
-                                <p style="margin: 0; font-size: 0.875rem; color: #6b7280;">
-                                    <strong>Fecha:</strong> ${backup.createdReadable}
-                                </p>
-                            </div>
-                            <div style="display: flex; gap: 0.5rem;">
-                                <button onclick="downloadBackup('${backup.name}')" class="btn-primary" style="padding: 0.5rem 1rem; font-size: 0.875rem;">
-                                    <i class="fas fa-download"></i> Descargar
-                                </button>
-                                <button onclick="deleteBackup('${backup.name}')" class="btn-danger" style="padding: 0.5rem 1rem; font-size: 0.875rem; background: #ef4444; border: none; color: white; border-radius: 5px; cursor: pointer;">
-                                    <i class="fas fa-trash"></i> Eliminar
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                `).join('');
-            } catch (error) {
-                console.error('Error cargando backups:', error);
-                document.getElementById('backupsList').innerHTML = '<div style="color: #ef4444;">Error al cargar backups</div>';
-            }
-        }
-
-        async function createBackupNow() {
-            if (!confirm('¿Crear una copia de seguridad ahora?')) return;
-            
-            try {
-                const btn = event.target;
-                btn.disabled = true;
-                btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Creando...';
-                
-                const response = await fetch('/api/backups/create', { method: 'POST' });
-                const data = await response.json();
-                
-                if (data.success) {
-                    alert('✅ Backup creado: ' + data.backup.name);
-                    loadBackups();
-                } else {
-                    alert('❌ Error: ' + data.error);
-                }
-            } catch (error) {
-                alert('Error: ' + error.message);
-            } finally {
-                const btn = event.target;
-                btn.disabled = false;
-                btn.innerHTML = '<i class="fas fa-plus"></i> Crear Backup Ahora';
-            }
-        }
-
-        function downloadBackup(filename) {
-            const link = document.createElement('a');
-            link.href = `/api/backups/download/${filename}`;
-            link.download = filename;
-            link.click();
-        }
-
-        async function deleteBackup(filename) {
-            if (!confirm(`¿Eliminar el backup ${filename}?`)) return;
-            
-            try {
-                const response = await fetch(`/api/backups/${filename}`, { method: 'DELETE' });
-                const data = await response.json();
-                
-                if (data.success) {
-                    alert('✅ Backup eliminado');
-                    loadBackups();
-                } else {
-                    alert('❌ Error: ' + data.error);
-                }
-            } catch (error) {
-                alert('Error: ' + error.message);
-            }
-        }
-
-        async function uploadBackup(event) {
-            const file = event.target.files[0];
-            if (!file) return;
-            
-            if (!file.name.endsWith('.tar.gz')) {
-                alert('❌ El archivo debe ser .tar.gz');
-                return;
-            }
-            
-            const formData = new FormData();
-            formData.append('backupFile', file);
-            
-            try {
-                const response = await fetch('/api/backups/restore', {
-                    method: 'POST',
-                    body: formData
-                });
-                const data = await response.json();
-                
-                if (data.success) {
-                    alert(`✅ Backup subido: ${file.name}\n\nPara restaurar, ejecuta en el servidor: node restore.js`);
-                    loadBackups();
-                } else {
-                    alert('❌ Error: ' + data.error);
-                }
-            } catch (error) {
-                alert('Error: ' + error.message);
-            }
-            
-            // Limpiar input
-            document.getElementById('backupFileInput').value = '';
-        }
-
-        async function loadUsers() {
-            try {
-                const response = await fetch('/api/usuarios');
-                const users = await response.json();
-                
-                const tbody = document.getElementById('usersTableBody');
-                
-                if (users.length === 0) {
-                    tbody.innerHTML = `
-                        <tr>
-                            <td colspan="7" style="text-align: center; padding: 2rem; color: #6b7280;">
-                                No hay usuarios registrados
-                            </td>
-                        </tr>
-                    `;
-                    applyPermissions();
-                    return;
-                }
-                
-                tbody.innerHTML = users.map(user => `
-                    <tr>
-                        <td><strong>${user.username}</strong></td>
-                        <td>${user.nombre_completo || '-'}</td>
-                        <td>${user.email || '-'}</td>
-                        <td>
-                            <span class="badge badge-${user.rol === 'admin' ? 'admin' : 'tecnico'}">
-                                ${user.rol === 'admin' ? 'Administrador' : 'Técnico'}
-                            </span>
-                        </td>
-                        <td>
-                            <span class="badge badge-${user.activo ? 'active' : 'inactive'}">
-                                ${user.activo ? 'Activo' : 'Inactivo'}
-                            </span>
-                        </td>
-                        <td>${user.ultimo_acceso ? new Date(user.ultimo_acceso).toLocaleString('es-ES') : 'Nunca'}</td>
-                        <td>
-                            <div class="user-actions">
-                                <button class="btn-icon btn-edit" onclick="editUser(${user.id})" title="Editar">
-                                    <i class="fas fa-edit"></i>
-                                </button>
-                                <button class="btn-icon btn-delete" onclick="deleteUser(${user.id}, '${user.username}')" title="Eliminar">
-                                    <i class="fas fa-trash"></i>
-                                </button>
-                            </div>
-                        </td>
-                    </tr>
-                `).join('');
-                applyPermissions();
-            } catch (error) {
-                console.error('Error cargando usuarios:', error);
-                alert('Error al cargar usuarios');
-            }
-        }
-
-        function showUserForm(user = null) {
-            const container = document.getElementById('userFormContainer');
-            const form = document.getElementById('userForm');
-            const title = document.getElementById('formTitle');
-            
-            container.style.display = 'block';
-            
-            if (user) {
-                title.textContent = 'Editar Usuario';
-                document.getElementById('userId').value = user.id;
-                document.getElementById('username').value = user.username;
-                document.getElementById('username').disabled = true;
-                document.getElementById('password').value = '';
-                document.getElementById('password').required = false;
-                document.getElementById('nombreCompleto').value = user.nombre_completo || '';
-                document.getElementById('email').value = user.email || '';
-                document.getElementById('rol').value = user.rol;
-                document.getElementById('activo').value = user.activo;
-            } else {
-                title.textContent = 'Nuevo Usuario';
-                form.reset();
-                document.getElementById('username').disabled = false;
-                document.getElementById('password').required = true;
-                document.getElementById('activo').value = '1';
-                document.getElementById('rol').value = 'tecnico';
-            }
-        }
-
-        function cancelUserForm() {
-            document.getElementById('userFormContainer').style.display = 'none';
-            document.getElementById('userForm').reset();
-        }
-
-        async function saveUser(event) {
-            event.preventDefault();
-            
-            const userId = document.getElementById('userId').value;
-            const data = {
-                username: document.getElementById('username').value,
-                password: document.getElementById('password').value,
-                nombre_completo: document.getElementById('nombreCompleto').value,
-                email: document.getElementById('email').value,
-                rol: document.getElementById('rol').value,
-                activo: parseInt(document.getElementById('activo').value)
-            };
-            
-            // Si no hay contraseña en edición, no enviarla
-            if (userId && !data.password) {
-                delete data.password;
-            }
-            
-            try {
-                const url = userId ? `/api/usuarios/${userId}` : '/api/usuarios';
-                const method = userId ? 'PUT' : 'POST';
-                
-                const response = await fetch(url, {
-                    method: method,
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify(data)
-                });
-                
-                const result = await response.json();
-                
-                if (response.ok) {
-                    alert(result.message || 'Usuario guardado exitosamente');
-                    cancelUserForm();
-                    loadUsers();
-                } else {
-                    alert(result.error || 'Error al guardar usuario');
-                }
-            } catch (error) {
-                console.error('Error:', error);
-                alert('Error al guardar usuario');
-            }
-        }
-
-        async function editUser(id) {
-            try {
-                const response = await fetch('/api/usuarios');
-                const users = await response.json();
-                const user = users.find(u => u.id === id);
-                
-                if (user) {
-                    showUserForm(user);
-                }
-            } catch (error) {
-                console.error('Error:', error);
-                alert('Error al cargar usuario');
-            }
-        }
-
-        async function deleteUser(id, username) {
-            if (!confirm(`¿Estás seguro de eliminar al usuario "${username}"?`)) {
-                return;
-            }
-            
-            try {
-                const response = await fetch(`/api/usuarios/${id}`, {
-                    method: 'DELETE'
-                });
-                
-                const result = await response.json();
-                
-                if (response.ok) {
-                    alert(result.message || 'Usuario eliminado exitosamente');
-                    loadUsers();
-                } else {
-                    alert(result.error || 'Error al eliminar usuario');
-                }
-            } catch (error) {
-                console.error('Error:', error);
-                alert('Error al eliminar usuario');
-            }
-        }
-    </script>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <script src="admin.js"></script>
 </body>
 </html>

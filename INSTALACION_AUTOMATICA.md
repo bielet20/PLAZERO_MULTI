@@ -91,6 +91,20 @@ WhatsApp en tu móvil → Menú → Dispositivos vinculados → Vincular disposi
 
 ### 3. Comandos útiles
 
+#### Crear un usuario
+
+Para crear un usuario, ejecuta el siguiente comando:
+
+```bash
+docker-compose exec app node create-user.js <username> <password> [nombre_completo] [email] [rol]
+```
+
+Ejemplo:
+
+```bash
+docker-compose exec app node create-user.js admin admin123 "Admin User" admin@example.com admin
+```
+
 ```bash
 # Ver estado
 docker-compose ps

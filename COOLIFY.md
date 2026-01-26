@@ -58,12 +58,23 @@ Para que WhatsApp mantenga la sesión y la base de datos persista, configura est
 
 ### 5. Deployment
 
-1. Haz clic en "Deploy"
-2. Coolify construirá la imagen Docker
-3. La primera vez, escanea los logs para ver el QR de WhatsApp:
-   - Ve a la sección "Logs" del servicio
-   - Verás el código QR en ASCII
-   - Escanéalo con WhatsApp desde tu teléfono
+1.  **Crear un usuario:**
+    Para crear un usuario, abre una consola en el contenedor de Coolify y ejecuta:
+    ```bash
+    node create-user.js <username> <password> [nombre_completo] [email] [rol]
+    ```
+    Ejemplo:
+    ```bash
+    node create-user.js admin admin123 "Admin User" admin@example.com admin
+    ```
+
+2.  **Deploy:**
+    Haz clic en "Deploy"
+    Coolify construirá la imagen Docker
+    La primera vez, escanea los logs para ver el QR de WhatsApp:
+    - Ve a la sección "Logs" del servicio
+    - Verás el código QR en ASCII
+    - Escanéalo con WhatsApp desde tu teléfono
 
 ### 6. Acceder a la aplicación
 

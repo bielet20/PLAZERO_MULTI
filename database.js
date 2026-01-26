@@ -116,6 +116,29 @@ const initDatabase = () => {
                 }
             });
 
+            // Create empresas table
+            db.run(`
+                CREATE TABLE IF NOT EXISTS empresas (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    nombre TEXT UNIQUE NOT NULL,
+                    cif TEXT,
+                    direccion TEXT,
+                    telefono TEXT,
+                    email TEXT,
+                    activo INTEGER DEFAULT 1,
+                    fecha_creacion DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+            `, (err) => {
+                if (err) {
+                    console.error('Error creating empresas table:', err);
+                } else {
+                    console.log('✓ Tabla de empresas creada/verificada');
+                }
+            });
+
+            // Add empresa_id column to tickets if it doesn't exist
+            db.run(`ALTER TABLE tickets ADD COLUMN empresa_id INTEGER REFERENCES empresas(id)`, () => {});
+
             // Create users table
             db.run(`
                 CREATE TABLE IF NOT EXISTS usuarios (
@@ -159,6 +182,86 @@ const initDatabase = () => {
                 }
             });
 
+            // Create materiales table
+            db.run(`
+                CREATE TABLE IF NOT EXISTS materiales (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    nombre TEXT UNIQUE NOT NULL,
+                    descripcion TEXT,
+                    precio REAL NOT NULL DEFAULT 0,
+                    activo INTEGER DEFAULT 1
+                )
+            `, (err) => {
+                if (err) {
+                    console.error('Error creating materiales table:', err);
+                } else {
+                    console.log('✓ Tabla de materiales creada/verificada');
+                }
+            });
+
+            // Create ticket_materiales table
+            db.run(`
+                CREATE TABLE IF NOT EXISTS ticket_materiales (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    ticket_id TEXT NOT NULL,
+                    material_id INTEGER NOT NULL,
+                    cantidad REAL NOT NULL DEFAULT 1,
+                    precio_unitario REAL NOT NULL,
+                    registrado_por TEXT NOT NULL,
+                    fecha_registro DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (ticket_id) REFERENCES tickets(ticket_id),
+                    FOREIGN KEY (material_id) REFERENCES materiales(id)
+                )
+            `, (err) => {
+                if (err) {
+                    console.error('Error creating ticket_materiales table:', err);
+                } else {
+                    console.log('✓ Tabla de ticket_materiales creada/verificada');
+                }
+            });
+
+            // Create facturas table
+            db.run(`
+                CREATE TABLE IF NOT EXISTS facturas (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    factura_id TEXT UNIQUE NOT NULL,
+                    ticket_id TEXT NOT NULL,
+                    empresa_id INTEGER,
+                    cliente_nombre TEXT NOT NULL,
+                    cliente_email TEXT,
+                    fecha_emision DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    fecha_vencimiento DATETIME,
+                    subtotal REAL NOT NULL,
+                    iva REAL NOT NULL,
+                    total REAL NOT NULL,
+                    estado TEXT DEFAULT 'pendiente', -- pendiente, pagada, anulada
+                    FOREIGN KEY (ticket_id) REFERENCES tickets(ticket_id),
+                    FOREIGN KEY (empresa_id) REFERENCES empresas(id)
+                )
+            `, (err) => {
+                if (err) console.error('Error creating facturas table:', err);
+                else console.log('✓ Tabla de facturas creada/verificada');
+                // Add empresa_id column if it doesn't exist
+                db.run(`ALTER TABLE facturas ADD COLUMN empresa_id INTEGER REFERENCES empresas(id)`, () => {});
+            });
+
+            // Create factura_items table
+            db.run(`
+                CREATE TABLE IF NOT EXISTS factura_items (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    factura_id TEXT NOT NULL,
+                    concepto TEXT NOT NULL,
+                    descripcion TEXT,
+                    cantidad REAL NOT NULL,
+                    precio_unitario REAL NOT NULL,
+                    total REAL NOT NULL,
+                    FOREIGN KEY (factura_id) REFERENCES facturas(factura_id)
+                )
+            `, (err) => {
+                if (err) console.error('Error creating factura_items table:', err);
+                else console.log('✓ Tabla de factura_items creada/verificada');
+            });
+
             // Insert default services if table is empty
             db.get('SELECT COUNT(*) as count FROM servicios', (err, row) => {
                 if (!err && row.count === 0) {
@@ -187,6 +290,81 @@ const initDatabase = () => {
     });
 };
 
+// ==================== FACTURACIÓN ====================
+
+const generateInvoiceId = () => {
+    const year = new Date().getFullYear();
+    const timestamp = Date.now().toString(36).toUpperCase();
+    return `FAC-${year}-${timestamp}`;
+};
+
+const createInvoice = (invoiceData) => {
+    return new Promise((resolve, reject) => {
+        const invoiceId = generateInvoiceId();
+        const { ticket_id, cliente_nombre, cliente_email, fecha_vencimiento, subtotal, iva, total, items } = invoiceData;
+
+        db.serialize(() => {
+            db.run('BEGIN TRANSACTION');
+
+            const invoiceSql = `
+                INSERT INTO facturas (factura_id, ticket_id, cliente_nombre, cliente_email, fecha_vencimiento, subtotal, iva, total)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            `;
+            db.run(invoiceSql, [invoiceId, ticket_id, cliente_nombre, cliente_email, fecha_vencimiento, subtotal, iva, total], function(err) {
+                if (err) {
+                    db.run('ROLLBACK');
+                    return reject(err);
+                }
+
+                const itemSql = `
+                    INSERT INTO factura_items (factura_id, concepto, descripcion, cantidad, precio_unitario, total)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                `;
+                const stmt = db.prepare(itemSql);
+                for (const item of items) {
+                    stmt.run(invoiceId, item.concepto, item.descripcion, item.cantidad, item.precio_unitario, item.total);
+                }
+                stmt.finalize((err) => {
+                    if (err) {
+                        db.run('ROLLBACK');
+                        return reject(err);
+                    }
+                    db.run('COMMIT');
+                    resolve({ id: this.lastID, invoiceId });
+                });
+            });
+        });
+    });
+};
+
+const getInvoiceById = (invoiceId) => {
+    return new Promise((resolve, reject) => {
+        const sql = 'SELECT * FROM facturas WHERE factura_id = ?';
+        db.get(sql, [invoiceId], (err, invoice) => {
+            if (err) return reject(err);
+            if (!invoice) return resolve(null);
+
+            const itemsSql = 'SELECT * FROM factura_items WHERE factura_id = ?';
+            db.all(itemsSql, [invoiceId], (err, items) => {
+                if (err) return reject(err);
+                invoice.items = items;
+                resolve(invoice);
+            });
+        });
+    });
+};
+
+const getInvoicesByTicketId = (ticketId) => {
+    return new Promise((resolve, reject) => {
+        const sql = 'SELECT * FROM facturas WHERE ticket_id = ? ORDER BY fecha_emision DESC';
+        db.all(sql, [ticketId], (err, rows) => {
+            if (err) reject(err);
+            else resolve(rows);
+        });
+    });
+};
+
+
 // Generate unique ticket ID
 const generateTicketId = () => {
     const timestamp = Date.now().toString(36).toUpperCase();
@@ -198,14 +376,14 @@ const generateTicketId = () => {
 const createTicket = (ticketData) => {
     return new Promise((resolve, reject) => {
         const ticketId = generateTicketId();
-        const { nombre, email, telefono, servicio, prioridad, descripcion } = ticketData;
+        const { nombre, email, telefono, servicio, prioridad, descripcion, empresa_id } = ticketData;
 
         const sql = `
-            INSERT INTO tickets (ticket_id, nombre, email, telefono, servicio, prioridad, descripcion)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO tickets (ticket_id, nombre, email, telefono, servicio, prioridad, descripcion, empresa_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         `;
 
-        db.run(sql, [ticketId, nombre, email, telefono, servicio, prioridad, descripcion], function(err) {
+        db.run(sql, [ticketId, nombre, email, telefono, servicio, prioridad, descripcion, empresa_id || null], function(err) {
             if (err) {
                 reject(err);
             } else {
@@ -281,13 +459,13 @@ const updateTicketStatus = (ticketId, estado) => {
 // Update complete ticket (full edit)
 const updateTicket = (ticketId, ticketData) => {
     return new Promise((resolve, reject) => {
-        const { nombre, email, telefono, servicio, prioridad, descripcion, estado, tecnico_asignado } = ticketData;
+        const { nombre, email, telefono, servicio, prioridad, descripcion, estado, tecnico_asignado, empresa_id } = ticketData;
         const sql = `
             UPDATE tickets 
-            SET nombre = ?, email = ?, telefono = ?, servicio = ?, prioridad = ?, descripcion = ?, estado = ?, tecnico_asignado = ?, fecha_actualizacion = CURRENT_TIMESTAMP 
+            SET nombre = ?, email = ?, telefono = ?, servicio = ?, prioridad = ?, descripcion = ?, estado = ?, tecnico_asignado = ?, empresa_id = ?, fecha_actualizacion = CURRENT_TIMESTAMP 
             WHERE ticket_id = ?
         `;
-        db.run(sql, [nombre, email, telefono, servicio, prioridad, descripcion, estado, tecnico_asignado, ticketId], function(err) {
+        db.run(sql, [nombre, email, telefono, servicio, prioridad, descripcion, estado, tecnico_asignado, empresa_id || null, ticketId], function(err) {
             if (err) {
                 reject(err);
             } else {
@@ -522,6 +700,116 @@ const deleteService = (serviceId) => {
         });
     });
 };
+
+// ==================== MATERIALES ====================
+
+// Get all materials
+const getAllMaterials = () => {
+    return new Promise((resolve, reject) => {
+        const sql = 'SELECT * FROM materiales WHERE activo = 1 ORDER BY nombre';
+        db.all(sql, [], (err, rows) => {
+            if (err) reject(err);
+            else resolve(rows);
+        });
+    });
+};
+
+// Get material by ID
+const getMaterialById = (id) => {
+    return new Promise((resolve, reject) => {
+        const sql = 'SELECT * FROM materiales WHERE id = ?';
+        db.get(sql, [id], (err, row) => {
+            if (err) reject(err);
+            else resolve(row);
+        });
+    });
+};
+
+// Create a new material
+const createMaterial = (nombre, descripcion, precio) => {
+    return new Promise((resolve, reject) => {
+        const sql = 'INSERT INTO materiales (nombre, descripcion, precio) VALUES (?, ?, ?)';
+        db.run(sql, [nombre, descripcion, precio], function(err) {
+            if (err) reject(err);
+            else resolve({ id: this.lastID });
+        });
+    });
+};
+
+// Update a material
+const updateMaterial = (id, nombre, descripcion, precio, activo) => {
+    return new Promise((resolve, reject) => {
+        const sql = 'UPDATE materiales SET nombre = ?, descripcion = ?, precio = ?, activo = ? WHERE id = ?';
+        db.run(sql, [nombre, descripcion, precio, activo, id], function(err) {
+            if (err) reject(err);
+            else resolve({ changes: this.changes });
+        });
+    });
+};
+
+// Delete a material
+const deleteMaterial = (id) => {
+    return new Promise((resolve, reject) => {
+        // Primero, verificar que no esté en uso en ningún ticket
+        db.get('SELECT COUNT(*) as count FROM ticket_materiales WHERE material_id = ?', [id], (err, row) => {
+            if (err) return reject(err);
+            if (row.count > 0) {
+                return reject(new Error('El material está en uso y no puede ser eliminado. Desactívelo en su lugar.'));
+            }
+            
+            // Si no está en uso, eliminar
+            const sql = 'DELETE FROM materiales WHERE id = ?';
+            db.run(sql, [id], function(err) {
+                if (err) reject(err);
+                else resolve({ changes: this.changes });
+            });
+        });
+    });
+};
+
+
+// ==================== TICKET-MATERIALES ====================
+
+// Add material to a ticket
+const addMaterialToTicket = (ticketId, materialId, cantidad, precioUnitario, registradoPor) => {
+    return new Promise((resolve, reject) => {
+        const sql = 'INSERT INTO ticket_materiales (ticket_id, material_id, cantidad, precio_unitario, registrado_por) VALUES (?, ?, ?, ?, ?)';
+        db.run(sql, [ticketId, materialId, cantidad, precioUnitario, registradoPor], function(err) {
+            if (err) reject(err);
+            else resolve({ id: this.lastID });
+        });
+    });
+};
+
+// Get all materials for a given ticket
+const getMaterialsForTicket = (ticketId) => {
+    return new Promise((resolve, reject) => {
+        const sql = `
+            SELECT tm.id, tm.cantidad, tm.precio_unitario, tm.fecha_registro, m.nombre, m.id as material_id
+            FROM ticket_materiales tm
+            JOIN materiales m ON tm.material_id = m.id
+            WHERE tm.ticket_id = ?
+            ORDER BY tm.fecha_registro DESC
+        `;
+        db.all(sql, [ticketId], (err, rows) => {
+            if (err) reject(err);
+            else resolve(rows);
+        });
+    });
+};
+
+// Remove a material from a ticket
+const removeMaterialFromTicket = (id) => {
+    return new Promise((resolve, reject) => {
+        const sql = 'DELETE FROM ticket_materiales WHERE id = ?';
+        db.run(sql, [id], function(err) {
+            if (err) reject(err);
+            else resolve({ changes: this.changes });
+        });
+    });
+};
+
+
 const registerWhatsAppContact = (ticketId, telefono, mensaje, enviadoPor) => {
     return new Promise((resolve, reject) => {
         const sql = 'INSERT INTO whatsapp_contactos (ticket_id, telefono, mensaje, enviado_por) VALUES (?, ?, ?, ?)';
@@ -763,6 +1051,87 @@ const deleteHorasTrabajo = (id) => {
     });
 };
 
+// ==================== EMPRESAS ====================
+
+const getAllEmpresas = () => {
+    return new Promise((resolve, reject) => {
+        const sql = 'SELECT * FROM empresas ORDER BY nombre';
+        db.all(sql, [], (err, rows) => {
+            if (err) reject(err);
+            else resolve(rows);
+        });
+    });
+};
+
+const getEmpresaById = (id) => {
+    return new Promise((resolve, reject) => {
+        const sql = 'SELECT * FROM empresas WHERE id = ?';
+        db.get(sql, [id], (err, row) => {
+            if (err) reject(err);
+            else resolve(row);
+        });
+    });
+};
+
+const createEmpresa = (nombre, cif, direccion, telefono, email) => {
+    return new Promise((resolve, reject) => {
+        const sql = `
+            INSERT INTO empresas (nombre, cif, direccion, telefono, email)
+            VALUES (?, ?, ?, ?, ?)
+        `;
+        db.run(sql, [nombre, cif, direccion, telefono, email], function(err) {
+            if (err) {
+                reject(err);
+            } else {
+                resolve({ id: this.lastID });
+            }
+        });
+    });
+};
+
+const updateEmpresa = (id, nombre, cif, direccion, telefono, email, activo) => {
+    return new Promise((resolve, reject) => {
+        const sql = `
+            UPDATE empresas 
+            SET nombre = ?, cif = ?, direccion = ?, telefono = ?, email = ?, activo = ?
+            WHERE id = ?
+        `;
+        db.run(sql, [nombre, cif, direccion, telefono, email, activo, id], function(err) {
+            if (err) {
+                reject(err);
+            } else {
+                resolve({ changes: this.changes });
+            }
+        });
+    });
+};
+
+const deleteEmpresa = (id) => {
+    return new Promise((resolve, reject) => {
+        const sql = 'DELETE FROM empresas WHERE id = ?';
+        db.run(sql, [id], function(err) {
+            if (err) {
+                reject(err);
+            } else {
+                resolve({ changes: this.changes });
+            }
+        });
+    });
+};
+
+const transferirTicketEmpresa = (ticketId, nuevaEmpresaId) => {
+    return new Promise((resolve, reject) => {
+        const sql = 'UPDATE tickets SET empresa_id = ? WHERE ticket_id = ?';
+        db.run(sql, [nuevaEmpresaId, ticketId], function(err) {
+            if (err) {
+                reject(err);
+            } else {
+                resolve({ changes: this.changes });
+            }
+        });
+    });
+};
+
 module.exports = {
     db,
     initDatabase,
@@ -799,5 +1168,25 @@ module.exports = {
     getTotalHorasTicket,
     getHorasPorTecnico,
     updateHorasTrabajo,
-    deleteHorasTrabajo
+    deleteHorasTrabajo,
+    // Materiales
+    getAllMaterials,
+    getMaterialById,
+    createMaterial,
+    updateMaterial,
+    deleteMaterial,
+    addMaterialToTicket,
+    getMaterialsForTicket,
+    removeMaterialFromTicket,
+    // Facturación
+    createInvoice,
+    getInvoiceById,
+    getInvoicesByTicketId,
+    // Empresas
+    getAllEmpresas,
+    getEmpresaById,
+    createEmpresa,
+    updateEmpresa,
+    deleteEmpresa,
+    transferirTicketEmpresa
 };

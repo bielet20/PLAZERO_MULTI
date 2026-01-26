@@ -125,6 +125,20 @@ docker-compose restart app
 
 ## 📱 Configurar WhatsApp
 
+### Crear un usuario
+
+Para crear un usuario, ejecuta el siguiente comando:
+
+```bash
+docker-compose exec app node create-user.js <username> <password> [nombre_completo] [email] [rol]
+```
+
+Ejemplo:
+
+```bash
+docker-compose exec app node create-user.js admin admin123 "Admin User" admin@example.com admin
+```
+
 ### Primera vez:
 
 1. Inicia los servicios: `./deploy.sh start`

@@ -42,15 +42,30 @@ El sistema formatea automáticamente los números de teléfono:
 3. Modifica el mensaje si lo deseas y envía
 
 ### Opción B: Panel completo (desde detalles del ticket)
-1. Haz clic en "Ver" en cualquier ticket
-2. Desplázate a la sección verde "Contactar por WhatsApp"
-3. **Opciones:**
-   - Selecciona una plantilla (el mensaje se carga automáticamente)
-   - O escribe tu propio mensaje en el campo de texto
-4. Ingresa tu nombre en "Tu nombre (técnico)"
-5. Haz clic en "Abrir WhatsApp y Enviar Mensaje"
-6. WhatsApp Web se abrirá con el mensaje preparado
-7. El contacto quedará registrado en el historial
+
+#### Crear un usuario
+
+Para crear un usuario, ejecuta el siguiente comando:
+
+```bash
+node create-user.js <username> <password> [nombre_completo] [email] [rol]
+```
+
+Ejemplo:
+
+```bash
+node create-user.js admin admin123 "Admin User" admin@example.com admin
+```
+
+1.  Haz clic en "Ver" en cualquier ticket
+2.  Desplázate a la sección verde "Contactar por WhatsApp"
+3.  **Opciones:**
+    -   Selecciona una plantilla (el mensaje se carga automáticamente)
+    -   O escribe tu propio mensaje en el campo de texto
+4.  Ingresa tu nombre en "Tu nombre (técnico)"
+5.  Haz clic en "Abrir WhatsApp y Enviar Mensaje"
+6.  WhatsApp Web se abrirá con el mensaje preparado
+7.  El contacto quedará registrado en el historial
 
 ## 🔧 Características Técnicas
 
