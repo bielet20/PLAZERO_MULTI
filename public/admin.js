@@ -2156,9 +2156,12 @@ let allTickets = [];
         }
 
         function closeTransferEmpresaModal() {
-            document.getElementById('transferEmpresaModal').style.display = 'none';
-            document.getElementById('targetEmpresaId').value = '';
-            document.getElementById('transferTicketId').value = '';
+            const modal = document.getElementById('transferEmpresaModal');
+            if (modal) {
+                modal.style.display = 'none';
+                document.getElementById('targetEmpresaId').value = '';
+                document.getElementById('transferTicketId').value = '';
+            }
         }
 
         async function transferirTicketEmpresa() {
@@ -2185,8 +2188,10 @@ let allTickets = [];
                 if (response.ok) {
                     alert(result.message || 'Ticket transferido exitosamente');
                     closeTransferEmpresaModal();
-                    closeModal();
-                    loadTickets(); // Refresh tickets list
+                    setTimeout(() => {
+                        closeModal();
+                        loadTickets(); // Refresh tickets list
+                    }, 100);
                 } else {
                     alert(result.error || 'Error al transferir ticket');
                 }
