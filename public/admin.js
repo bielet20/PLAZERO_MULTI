@@ -121,13 +121,13 @@ let allTickets = [];
         let currentUserRole = null;
         let isAdmin = false;
 
-        // Load tickets on page load
-        document.addEventListener('DOMContentLoaded', () => {
-            fetchCsrfToken();
-            checkUserRole();
-            loadServices(); // To populate dropdowns
-            loadEmpresas(); // To populate empresas dropdowns
-            loadTickets();
+        // Load tickets on page load (ensure CSRF token and session are ready first)
+        document.addEventListener('DOMContentLoaded', async () => {
+            await fetchCsrfToken();
+            await checkUserRole();
+            await loadServices(); // To populate dropdowns
+            await loadEmpresas(); // To populate empresas dropdowns
+            await loadTickets();
             setupEventListeners();
         });
 

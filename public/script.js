@@ -31,6 +31,21 @@ document.querySelectorAll('a[href^="#"]').forEach(anchor => {
 const ticketForm = document.getElementById('ticketForm');
 const mensaje = document.getElementById('mensaje');
 
+// Get CSRF token before form submission
+let csrfToken = '';
+async function getCsrfToken() {
+    try {
+        const response = await fetch('/api/csrf-token');
+        const data = await response.json();
+        csrfToken = data.csrfToken;
+    } catch (error) {
+        console.error('Error fetching CSRF token:', error);
+    }
+}
+
+// Fetch CSRF token on page load
+document.addEventListener('DOMContentLoaded', getCsrfToken);
+
 ticketForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     
@@ -53,7 +68,8 @@ ticketForm.addEventListener('submit', async (e) => {
         const response = await fetch('/api/tickets', {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                'csrf-token': csrfToken
             },
             body: JSON.stringify(formData)
         });
