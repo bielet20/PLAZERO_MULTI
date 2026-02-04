@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="es">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -7,6 +8,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="admin.css">
 </head>
+
 <body>
     <div class="admin-header">
         <div class="container">
@@ -22,16 +24,23 @@
                     <button onclick="toggleEmpresasPanel()" class="header-btn">
                         <i class="fas fa-building"></i> Empresas
                     </button>
+                    <button onclick="toggleFacturasPanel()" class="header-btn">
+                        <i class="fas fa-file-invoice-dollar"></i> Facturas
+                    </button>
                     <button onclick="toggleServicesPanel()" class="header-btn">
                         <i class="fas fa-cogs"></i> Servicios
                     </button>
                     <button onclick="toggleMaterialsPanel()" class="header-btn">
                         <i class="fas fa-box"></i> Materiales
                     </button>
+                    <button onclick="toggleCalendarPanel()" class="header-btn">
+                        <i class="fas fa-calendar-alt"></i> Calendario
+                    </button>
                     <button onclick="toggleUsersPanel()" class="header-btn">
                         <i class="fas fa-users"></i> Usuarios
                     </button>
-                    <button onclick="logout()" style="background: rgba(255,255,255,0.2); color: white; border: 2px solid white; padding: 0.5rem 1rem; border-radius: 5px; cursor: pointer; font-weight: 600;">
+                    <button onclick="logout()"
+                        style="background: rgba(255,255,255,0.2); color: white; border: 2px solid white; padding: 0.5rem 1rem; border-radius: 5px; cursor: pointer; font-weight: 600;">
                         <i class="fas fa-sign-out-alt"></i> Cerrar Sesión
                     </button>
                 </div>
@@ -82,7 +91,8 @@
                 </div>
 
                 <!-- User Form (hidden by default) -->
-                <div id="userFormContainer" style="display: none; background: #f9fafb; padding: 1.5rem; border-radius: 8px; margin-bottom: 1.5rem;">
+                <div id="userFormContainer"
+                    style="display: none; background: #f9fafb; padding: 1.5rem; border-radius: 8px; margin-bottom: 1.5rem;">
                     <h3 id="formTitle">Nuevo Usuario</h3>
                     <form id="userForm" onsubmit="saveUser(event)">
                         <input type="hidden" id="userId">
@@ -103,6 +113,11 @@
                             <div class="form-group">
                                 <label for="email">Email</label>
                                 <input type="email" id="email">
+                            </div>
+                            <div class="form-group">
+                                <label for="whatsapp">Teléfono WhatsApp</label>
+                                <input type="text" id="whatsapp" placeholder="34600112233">
+                                <small style="color: #6b7280;">Formato internacional sin + (ej: 34600...)</small>
                             </div>
                             <div class="form-group">
                                 <label for="rol">Rol *</label>
@@ -170,13 +185,14 @@
             </div>
             <div class="users-content">
                 <div class="filter-actions" style="margin-bottom: 1.5rem; display: flex; gap: 1rem;">
-                    <button class="btn-primary" onclick="createBackupNow()">
+                    <button class="btn-primary" onclick="createBackupNow(event)">
                         <i class="fas fa-plus"></i> Crear Backup Ahora
                     </button>
                     <button class="btn-secondary" onclick="document.getElementById('backupFileInput').click()">
                         <i class="fas fa-upload"></i> Subir Backup
                     </button>
-                    <input type="file" id="backupFileInput" accept=".tar.gz" style="display: none;" onchange="uploadBackup(event)">
+                    <input type="file" id="backupFileInput" accept=".tar.gz" style="display: none;"
+                        onchange="uploadBackup(event)">
                 </div>
 
                 <!-- Backups List -->
@@ -207,12 +223,14 @@
             </div>
             <div class="users-content">
                 <div class="filter-actions" style="margin-bottom: 1.5rem;">
-                    <button class="btn-primary" onclick="showServiceForm()" style="background-color: #10b981; border-color: #059669;">
+                    <button class="btn-primary" onclick="showServiceForm()"
+                        style="background-color: #10b981; border-color: #059669;">
                         <i class="fas fa-plus"></i> Nuevo Servicio
                     </button>
                 </div>
 
-                <div id="serviceFormContainer" style="display: none; background: #f9fafb; padding: 1.5rem; border-radius: 8px; margin-bottom: 1.5rem;">
+                <div id="serviceFormContainer"
+                    style="display: none; background: #f9fafb; padding: 1.5rem; border-radius: 8px; margin-bottom: 1.5rem;">
                     <h3 id="serviceFormTitle">Nuevo Servicio</h3>
                     <form id="serviceForm" onsubmit="saveService(event)">
                         <input type="hidden" id="serviceId">
@@ -229,7 +247,7 @@
                                 <label for="serviceDescription">Descripción</label>
                                 <input type="text" id="serviceDescription">
                             </div>
-                             <div class="form-group">
+                            <div class="form-group">
                                 <label for="serviceActive">Estado *</label>
                                 <select id="serviceActive" required>
                                     <option value="1">Activo</option>
@@ -238,7 +256,8 @@
                             </div>
                         </div>
                         <div style="display: flex; gap: 1rem; margin-top: 1rem;">
-                            <button type="submit" class="btn-primary" style="background-color: #10b981; border-color: #059669;">
+                            <button type="submit" class="btn-primary"
+                                style="background-color: #10b981; border-color: #059669;">
                                 <i class="fas fa-save"></i> Guardar
                             </button>
                             <button type="button" class="btn-secondary" onclick="cancelServiceForm()">
@@ -281,12 +300,14 @@
             </div>
             <div class="users-content">
                 <div class="filter-actions" style="margin-bottom: 1.5rem;">
-                    <button class="btn-primary" onclick="showMaterialForm()" style="background-color: #f59e0b; border-color: #b45309;">
+                    <button class="btn-primary" onclick="showMaterialForm()"
+                        style="background-color: #f59e0b; border-color: #b45309;">
                         <i class="fas fa-plus"></i> Nuevo Material
                     </button>
                 </div>
 
-                <div id="materialFormContainer" style="display: none; background: #f9fafb; padding: 1.5rem; border-radius: 8px; margin-bottom: 1.5rem;">
+                <div id="materialFormContainer"
+                    style="display: none; background: #f9fafb; padding: 1.5rem; border-radius: 8px; margin-bottom: 1.5rem;">
                     <h3 id="materialFormTitle">Nuevo Material</h3>
                     <form id="materialForm" onsubmit="saveMaterial(event)">
                         <input type="hidden" id="materialId">
@@ -303,7 +324,7 @@
                                 <label for="materialDescription">Descripción</label>
                                 <input type="text" id="materialDescription">
                             </div>
-                             <div class="form-group">
+                            <div class="form-group">
                                 <label for="materialActive">Estado *</label>
                                 <select id="materialActive" required>
                                     <option value="1">Activo</option>
@@ -312,7 +333,8 @@
                             </div>
                         </div>
                         <div style="display: flex; gap: 1rem; margin-top: 1rem;">
-                            <button type="submit" class="btn-primary" style="background-color: #f59e0b; border-color: #b45309;">
+                            <button type="submit" class="btn-primary"
+                                style="background-color: #f59e0b; border-color: #b45309;">
                                 <i class="fas fa-save"></i> Guardar
                             </button>
                             <button type="button" class="btn-secondary" onclick="cancelMaterialForm()">
@@ -367,12 +389,14 @@
             </div>
             <div class="users-content">
                 <div class="filter-actions" style="margin-bottom: 1.5rem;">
-                    <button class="btn-primary" onclick="showEmpresaForm()" style="background-color: #6366f1; border-color: #4f46e5;">
+                    <button class="btn-primary" onclick="showEmpresaForm()"
+                        style="background-color: #6366f1; border-color: #4f46e5;">
                         <i class="fas fa-plus"></i> Nueva Empresa
                     </button>
                 </div>
 
-                <div id="empresaFormContainer" style="display: none; background: #f9fafb; padding: 1.5rem; border-radius: 8px; margin-bottom: 1.5rem;">
+                <div id="empresaFormContainer"
+                    style="display: none; background: #f9fafb; padding: 1.5rem; border-radius: 8px; margin-bottom: 1.5rem;">
                     <h3 id="empresaFormTitle">Nueva Empresa</h3>
                     <form id="empresaForm" onsubmit="saveEmpresa(event)">
                         <input type="hidden" id="empresaId">
@@ -404,9 +428,17 @@
                                     <option value="0">Inactiva</option>
                                 </select>
                             </div>
+                            <div class="form-group">
+                                <label
+                                    style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; margin-top: 1.5rem;">
+                                    <input type="checkbox" id="empresaVerifactu" checked style="width: auto;">
+                                    <span>Habilitar Veri*Factu</span>
+                                </label>
+                            </div>
                         </div>
                         <div style="display: flex; gap: 1rem; margin-top: 1rem;">
-                            <button type="submit" class="btn-primary" style="background-color: #6366f1; border-color: #4f46e5;">
+                            <button type="submit" class="btn-primary"
+                                style="background-color: #6366f1; border-color: #4f46e5;">
                                 <i class="fas fa-save"></i> Guardar
                             </button>
                             <button type="button" class="btn-secondary" onclick="cancelEmpresaForm()">
@@ -432,6 +464,79 @@
                         <!-- Empresas will be loaded here -->
                     </tbody>
                 </table>
+            </div>
+        </div>
+
+        <!-- Facturas Panel -->
+        <div class="users-panel" id="facturasPanel" style="display: none;">
+            <div class="users-header" style="background: linear-gradient(135deg, #059669, #065f46);">
+                <div>
+                    <h2 style="margin: 0; display: flex; align-items: center; gap: 0.5rem;">
+                        <i class="fas fa-file-invoice-dollar"></i> Gestión de Facturas
+                    </h2>
+                </div>
+                <div>
+                    <button class="toggle-whatsapp" onclick="toggleFacturasPanel()">
+                        <i class="fas fa-times"></i> Cerrar
+                    </button>
+                </div>
+            </div>
+            <div class="users-content">
+                <table class="users-table">
+                    <thead>
+                        <tr>
+                            <th>Factura ID</th>
+                            <th>Ticket</th>
+                            <th>Cliente</th>
+                            <th>Empresa</th>
+                            <th>Total</th>
+                            <th>Estado</th>
+                            <th>Veri*Factu</th>
+                            <th>Presentada</th>
+                            <th>Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody id="facturasTableBody">
+                        <tr>
+                            <td colspan="9" style="text-align: center; padding: 2rem; color: #6b7280;">
+                                Cargando facturas...
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Modal for presentar factura -->
+        <div id="presentarFacturaModal" class="modal">
+            <div class="modal-content" style="max-width: 500px;">
+                <div class="modal-header" style="background: linear-gradient(135deg, #dc2626, #991b1b);">
+                    <h2>⚠️ Presentar Factura Veri*Factu</h2>
+                    <button class="close-modal" onclick="closePresentarFacturaModal()"><i
+                            class="fas fa-times"></i></button>
+                </div>
+                <div class="modal-body">
+                    <div
+                        style="background: #fef2f2; border-left: 4px solid #dc2626; padding: 1rem; margin-bottom: 1.5rem; border-radius: 4px;">
+                        <p style="margin: 0; font-weight: bold; color: #991b1b; margin-bottom: 0.5rem;">⚠️ ADVERTENCIA:
+                            Esta acción es IRREVERSIBLE</p>
+                        <p style="margin: 0; color: #7f1d1d; font-size: 0.9rem;">Una vez presentada, la factura quedará
+                            bloqueada y NO podrá ser modificada ni eliminada.</p>
+                    </div>
+                    <p style="margin-bottom: 0.5rem; font-weight: 600;">Para confirmar, escribe el número de factura:
+                    </p>
+                    <input type="text" id="confirmFacturaId" placeholder="FAC-2026-XXXXXXXX"
+                        style="width: 100%; padding: 0.75rem; border: 2px solid #d1d5db; border-radius: 5px; font-family: monospace; font-size: 1rem; margin-bottom: 1rem;">
+                    <input type="hidden" id="facturaIdToPresent">
+                    <div style="display: flex; gap: 1rem; justify-content: flex-end;">
+                        <button class="btn" style="background: #6b7280;" onclick="closePresentarFacturaModal()">
+                            Cancelar
+                        </button>
+                        <button class="btn" style="background: #dc2626;" onclick="confirmarPresentacion()">
+                            <i class="fas fa-lock"></i> Presentar y Bloquear
+                        </button>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -466,6 +571,27 @@
             </div>
         </div>
 
+        <!-- Calendar Panel -->
+        <div class="users-panel" id="calendarPanel" style="display: none;">
+            <div class="users-header" style="background: linear-gradient(135deg, #3b82f6, #1d4ed8);">
+                <div>
+                    <h2 style="margin: 0; display: flex; align-items: center; gap: 0.5rem;">
+                        <i class="fas fa-calendar-alt"></i> Agenda de Citas
+                    </h2>
+                </div>
+                <div>
+                    <button class="toggle-whatsapp" onclick="toggleCalendarPanel()">
+                        <i class="fas fa-times"></i> Cerrar
+                    </button>
+                </div>
+            </div>
+            <div class="users-content">
+                <div id="calendarView">
+                    <!-- Calendar content will be generated by JS -->
+                </div>
+            </div>
+        </div>
+
         <!-- Tickets Table -->
         <div class="tickets-container">
             <div class="tickets-header">
@@ -474,10 +600,14 @@
                     <button class="btn-export" onclick="openCreateTicketModal()" style="background: #10b981;">
                         <i class="fas fa-plus"></i> Crear Nuevo Ticket
                     </button>
-                    <button class="btn-export" onclick="loadArchivedTickets(); document.querySelector('h2').textContent = 'Tickets Archivados'" style="background: #f59e0b;">
+                    <button class="btn-export"
+                        onclick="loadArchivedTickets(); document.querySelector('h2').textContent = 'Tickets Archivados'"
+                        style="background: #f59e0b;">
                         <i class="fas fa-archive"></i> Ver Archivados
                     </button>
-                    <button class="btn-export" onclick="loadTickets(); document.querySelector('h2').textContent = 'Lista de Tickets'" style="background: #000000;">
+                    <button class="btn-export"
+                        onclick="loadTickets(); document.querySelector('h2').textContent = 'Lista de Tickets'"
+                        style="background: #000000;">
                         <i class="fas fa-list"></i> Ver Activos
                     </button>
                     <button class="btn-export" onclick="exportToCSV()">
@@ -526,35 +656,35 @@
             <div class="modal-body">
                 <form onsubmit="event.preventDefault(); saveTicketEdit();">
                     <input type="hidden" id="editTicketId">
-                    
+
                     <div class="form-group">
                         <label>Cliente</label>
                         <input type="text" id="editTicketNombre" required>
                     </div>
-                    
+
                     <div class="form-group">
                         <label>Email</label>
                         <input type="email" id="editTicketEmail" required>
                     </div>
-                    
+
                     <div class="form-group">
                         <label>Teléfono</label>
                         <input type="tel" id="editTicketTelefono" required>
                     </div>
-                    
+
                     <div class="form-group">
                         <label>Servicio</label>
                         <select id="editTicketServicio" required>
                         </select>
                     </div>
-                    
+
                     <div class="form-group">
                         <label>Empresa</label>
                         <select id="editTicketEmpresa">
                             <option value="">Sin empresa</option>
                         </select>
                     </div>
-                    
+
                     <div class="form-group">
                         <label>Prioridad</label>
                         <select id="editTicketPrioridad" required>
@@ -564,7 +694,7 @@
                             <option value="urgente">Urgente</option>
                         </select>
                     </div>
-                    
+
                     <div class="form-group">
                         <label>Estado</label>
                         <select id="editTicketEstado" required>
@@ -574,17 +704,17 @@
                             <option value="cerrado">Cerrado</option>
                         </select>
                     </div>
-                    
+
                     <div class="form-group">
                         <label>Técnico Asignado</label>
                         <input type="text" id="editTicketTecnico">
                     </div>
-                    
+
                     <div class="form-group">
                         <label>Descripción</label>
                         <textarea id="editTicketDescripcion" rows="4" required></textarea>
                     </div>
-                    
+
                     <div style="display: flex; gap: 1rem; justify-content: flex-end; margin-top: 1.5rem;">
                         <button type="button" class="btn" style="background: #6b7280;" onclick="closeEditTicketModal()">
                             Cancelar
@@ -605,35 +735,35 @@
             </div>
             <div class="modal-body">
                 <form onsubmit="event.preventDefault(); saveNewTicket();">
-                    
+
                     <div class="form-group">
                         <label>Cliente</label>
                         <input type="text" id="createTicketNombre" required>
                     </div>
-                    
+
                     <div class="form-group">
                         <label>Email</label>
                         <input type="email" id="createTicketEmail" required>
                     </div>
-                    
+
                     <div class="form-group">
                         <label>Teléfono</label>
                         <input type="tel" id="createTicketTelefono" required>
                     </div>
-                    
+
                     <div class="form-group">
                         <label>Servicio</label>
                         <select id="createTicketServicio" required>
                         </select>
                     </div>
-                    
+
                     <div class="form-group">
                         <label>Empresa</label>
                         <select id="createTicketEmpresa">
                             <option value="">Sin empresa</option>
                         </select>
                     </div>
-                    
+
                     <div class="form-group">
                         <label>Prioridad</label>
                         <select id="createTicketPrioridad" required>
@@ -643,14 +773,15 @@
                             <option value="urgente">Urgente</option>
                         </select>
                     </div>
-                    
+
                     <div class="form-group">
                         <label>Descripción</label>
                         <textarea id="createTicketDescripcion" rows="4" required></textarea>
                     </div>
-                    
+
                     <div style="display: flex; gap: 1rem; justify-content: flex-end; margin-top: 1.5rem;">
-                        <button type="button" class="btn" style="background: #6b7280;" onclick="closeCreateTicketModal()">
+                        <button type="button" class="btn" style="background: #6b7280;"
+                            onclick="closeCreateTicketModal()">
                             Cancelar
                         </button>
                         <button type="submit" class="btn" style="background: #10b981;">
@@ -675,18 +806,19 @@
                         <label>Empresa Actual</label>
                         <input type="text" id="currentEmpresaName" readonly style="background: #f3f4f6;">
                     </div>
-                    
+
                     <div class="form-group">
                         <label>Nueva Empresa</label>
                         <select id="targetEmpresaId" required>
                             <option value="">Seleccionar empresa...</option>
                         </select>
                     </div>
-                    
+
                     <input type="hidden" id="transferTicketId">
-                    
+
                     <div style="display: flex; gap: 1rem; justify-content: flex-end; margin-top: 1.5rem;">
-                        <button type="button" class="btn" style="background: #6b7280;" onclick="closeTransferEmpresaModal()">
+                        <button type="button" class="btn" style="background: #6b7280;"
+                            onclick="closeTransferEmpresaModal()">
                             Cancelar
                         </button>
                         <button type="submit" class="btn" style="background: #000000;">
@@ -697,7 +829,8 @@
             </div>
         </div>
     </div>
-    
+
     <script src="admin.js"></script>
 </body>
+
 </html>

@@ -13,7 +13,7 @@ const path = require('path');
 const { execSync } = require('child_process');
 
 const BACKUP_DIR = path.join(__dirname, 'backups');
-const DB_FILE = path.join(__dirname, 'tickets.db');
+const DB_FILE = path.join(__dirname, 'data', 'tickets.db');
 
 // Crear directorio de backups si no existe
 if (!fs.existsSync(BACKUP_DIR)) {
@@ -45,7 +45,7 @@ try {
 
     // 2. Backup de archivos de configuración
     console.log('\n2️⃣  Copiando configuración...');
-    const configFiles = ['.env.example', 'package.json', 'Dockerfile', 'docker-compose.yml'];
+    const configFiles = ['.env', '.env.example', 'package.json', 'Dockerfile', 'docker-compose.yml'];
     configFiles.forEach(file => {
         const filePath = path.join(__dirname, file);
         if (fs.existsSync(filePath)) {
@@ -65,12 +65,29 @@ try {
 
     // 4. Backup del código fuente principal
     console.log('\n4️⃣  Copiando código fuente...');
-    const sourceFiles = ['server.js', 'database.js', 'email.js'];
+    const sourceFiles = ['server.js', 'database.js', 'email.js', 'whatsapp.js', 'backup.js', 'restore.js'];
     sourceFiles.forEach(file => {
         const filePath = path.join(__dirname, file);
         if (fs.existsSync(filePath)) {
             fs.copyFileSync(filePath, path.join(backupPath, file));
             console.log(`   ✓ ${file}`);
+        }
+    });
+
+    // 4.5 Backup de sesiones de WhatsApp
+    console.log('\n4️⃣.5️⃣  Copiando sesiones de WhatsApp...');
+    const whatsappDirs = ['.wwebjs_auth', '.wwebjs_cache'];
+    whatsappDirs.forEach(dir => {
+        const dirPath = path.join(__dirname, dir);
+        if (fs.existsSync(dirPath)) {
+            const destPath = path.join(backupPath, dir);
+            // Usamos rsync para excluir archivos de bloqueo y sockets que dan error al copiar
+            try {
+                execSync(`rsync -a --exclude="Singleton*" --exclude="RunningChromeVersion" "${dirPath}/" "${destPath}/"`);
+                console.log(`   ✓ ${dir}/`);
+            } catch (e) {
+                console.log(`   ⚠️  ${dir}/ (copiado con advertencias)`);
+            }
         }
     });
 
@@ -98,7 +115,7 @@ try {
 
     // Información final
     const zipSize = (fs.statSync(zipPath).size / 1024 / 1024).toFixed(2);
-    
+
     console.log(`\n${'='.repeat(50)}`);
     console.log('✅ Backup completado exitosamente');
     console.log(`${'='.repeat(50)}\n`);
@@ -113,6 +130,10 @@ try {
 } catch (error) {
     console.error('\n❌ Error durante el backup:');
     console.error(error.message);
+    // Limpieza en caso de error
+    if (typeof backupPath !== 'undefined' && fs.existsSync(backupPath)) {
+        execSync(`rm -rf "${backupPath}"`);
+    }
     process.exit(1);
 }
 
@@ -122,7 +143,7 @@ try {
 function getDirectorySize(dirPath) {
     let size = 0;
     const files = fs.readdirSync(dirPath);
-    
+
     files.forEach(file => {
         const filePath = path.join(dirPath, file);
         const stats = fs.statSync(filePath);
@@ -132,6 +153,6 @@ function getDirectorySize(dirPath) {
             size += stats.size;
         }
     });
-    
+
     return size;
 }

@@ -7,6 +7,12 @@ const fs = require('fs');
 const { execSync } = require('child_process');
 require('dotenv').config();
 
+// Security imports
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
+const logger = require('./logger');
+const { sanitizeInput, sanitizeObject, validatePasswordStrength, validateEmail, validatePhone } = require('./security-utils');
+
 // Multer para upload de archivos
 const multer = require('multer');
 const uploadDir = path.join(__dirname, 'backups');
@@ -15,9 +21,9 @@ if (!fs.existsSync(uploadDir)) {
 }
 const upload = multer({ dest: uploadDir });
 
-const { 
-    initDatabase, 
-    createTicket, 
+const {
+    initDatabase,
+    createTicket,
     getAllTickets,
     getArchivedTickets,
     getTicketById,
@@ -66,22 +72,89 @@ const {
     getInvoicesByTicketId,
     createMultiTicketInvoice,
     getTicketsForInvoice,
+    getAllInvoices,
+    presentarInvoice,
+    updateInvoice,
+    deleteInvoice,
     // Empresas
     getAllEmpresas,
     getEmpresaById,
     createEmpresa,
     updateEmpresa,
     deleteEmpresa,
-    transferirTicketEmpresa
+    transferirTicketEmpresa,
+    // Citas
+    createAppointment,
+    getAppointmentsByTicket,
+    getAppointmentsByTechnician,
+    getAllAppointments,
+    updateAppointmentStatus,
+    deleteAppointment
 } = require('./database');
 
-const { 
-    sendTicketConfirmation, 
-    sendNotificationToSupport 
+const {
+    sendTicketConfirmation,
+    sendNotificationToSupport
 } = require('./email');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// Security: Helmet middleware for security headers
+app.use(helmet({
+    contentSecurityPolicy: {
+        directives: {
+            defaultSrc: ["'self'"],
+            styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com", "https://cdnjs.cloudflare.com"],
+            fontSrc: ["'self'", "https://fonts.gstatic.com", "https://cdnjs.cloudflare.com"],
+            scriptSrc: ["'self'", "'unsafe-inline'", "https://cdnjs.cloudflare.com"],
+            scriptSrcAttr: ["'unsafe-inline'", "'unsafe-hashes'"], // Permitir event handlers inline
+            imgSrc: ["'self'", "data:", "https:", "https://api.qrserver.com"],
+            connectSrc: ["'self'"],
+            frameSrc: ["'none'"],
+            objectSrc: ["'none'"],
+            upgradeInsecureRequests: process.env.NODE_ENV === 'production' ? [] : null
+        }
+    },
+    hsts: {
+        maxAge: 31536000,
+        includeSubDomains: true,
+        preload: true
+    },
+    referrerPolicy: { policy: 'strict-origin-when-cross-origin' }
+}));
+
+// Security: Rate Limiting
+const loginLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutos
+    max: 5, // 5 intentos
+    message: {
+        error: 'Demasiados intentos de inicio de sesión. Intente nuevamente en 15 minutos.'
+    },
+    standardHeaders: true,
+    legacyHeaders: false,
+    skipSuccessfulRequests: true
+});
+
+const apiLimiter = rateLimit({
+    windowMs: 1 * 60 * 1000, // 1 minuto
+    max: 100, // 100 requests por minuto
+    message: {
+        error: 'Demasiadas solicitudes. Por favor, espere un momento.'
+    },
+    standardHeaders: true,
+    legacyHeaders: false
+});
+
+const ticketCreationLimiter = rateLimit({
+    windowMs: 60 * 60 * 1000, // 1 hora
+    max: 10, // 10 tickets por hora por IP
+    message: {
+        error: 'Ha alcanzado el límite de tickets por hora. Intente más tarde.'
+    },
+    standardHeaders: true,
+    legacyHeaders: false
+});
 
 // Middleware
 app.use(bodyParser.json());
@@ -106,9 +179,13 @@ app.use(session({
     secret: process.env.SESSION_SECRET || 'mi_secreto_temporal',
     resave: false,
     saveUninitialized: false,
-    cookie: { 
+    name: 'sessionId', // Cambiar nombre por defecto para mayor seguridad
+    cookie: {
         httpOnly: true,
-        maxAge: 24 * 60 * 60 * 1000 // 24 hours
+        secure: process.env.NODE_ENV === 'production', // Solo HTTPS en producción
+        sameSite: 'strict', // Protección CSRF adicional
+        maxAge: 24 * 60 * 60 * 1000, // 24 hours
+        path: '/'
     }
 }));
 
@@ -159,7 +236,7 @@ const autoMigrateAdminCredentials = async () => {
             await createUser('admin', defaultHash, 'Administrador', 'admin@local', 'admin');
             return;
         }
-        
+
         // Check if password is already hashed (bcrypt hashes start with $2a$ or $2b$)
         if (!adminUser.password_hash.startsWith('$2')) {
             console.log('🔐 Detectado: contraseña sin hashear. Migrando...');
@@ -183,15 +260,15 @@ const requireAuth = (req, res, next) => {
     if (req.session && req.session.authenticated) {
         return next();
     }
-    
+
     // Si es una petición API, devolver error JSON
     if (req.path.startsWith('/api/')) {
-        return res.status(401).json({ 
+        return res.status(401).json({
             error: 'No autorizado. Inicie sesión para acceder a esta información.',
-            requiresAuth: true 
+            requiresAuth: true
         });
     }
-    
+
     // Si es una página, redirigir al login
     res.redirect('/login');
 };
@@ -201,8 +278,8 @@ const requireAdmin = (req, res, next) => {
     if (req.session && req.session.authenticated && req.session.rol === 'admin') {
         return next();
     }
-    
-    return res.status(403).json({ 
+
+    return res.status(403).json({
         error: 'Acceso denegado. Solo administradores pueden realizar esta acción.'
     });
 };
@@ -217,28 +294,37 @@ app.get('/login', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'login.html'));
 });
 
-app.post('/api/login', async (req, res) => {
+app.post('/api/login', loginLimiter, async (req, res) => {
     const { username, password } = req.body;
-    
+
     try {
         // Intentar autenticación con base de datos primero
         const user = await getUserByUsername(username);
-        
+
         if (user && user.activo) {
             // Verificar contraseña hasheada
             const match = await bcrypt.compare(password, user.password_hash);
-            
+
             if (match) {
                 req.session.authenticated = true;
                 req.session.username = username;
                 req.session.userId = user.id;
                 req.session.rol = user.rol;
-                
+
                 // Actualizar último acceso
                 await updateUserLastAccess(username);
-                
-                return res.json({ 
-                    success: true, 
+
+                // Security: Log de auditoría - Login exitoso
+                logger.info('Login successful', {
+                    username,
+                    userId: user.id,
+                    ip: req.ip,
+                    userAgent: req.get('user-agent'),
+                    timestamp: new Date().toISOString()
+                });
+
+                return res.json({
+                    success: true,
                     message: `✓ Bienvenido ${user.nombre_completo || username}`,
                     user: {
                         username: user.username,
@@ -248,18 +334,34 @@ app.post('/api/login', async (req, res) => {
                 });
             }
         }
-        
+
+        // Security: Log de auditoría - Login fallido
+        logger.warn('Login failed', {
+            username,
+            ip: req.ip,
+            userAgent: req.get('user-agent'),
+            timestamp: new Date().toISOString()
+        });
+
         // Credenciales incorrectas
-        res.status(401).json({ 
-            success: false, 
+        res.status(401).json({
+            success: false,
             message: 'Usuario o contraseña incorrectos'
         });
-        
+
     } catch (error) {
+        // Security: Log de error
+        logger.error('Login error', {
+            username,
+            error: error.message,
+            stack: error.stack,
+            ip: req.ip
+        });
+
         console.error('Error en login:', error);
-        res.status(500).json({ 
-            success: false, 
-            message: 'Error en el servidor' 
+        res.status(500).json({
+            success: false,
+            message: 'Error en el servidor'
         });
     }
 });
@@ -274,14 +376,34 @@ app.post('/api/logout', csrfProtection, (req, res) => {
 });
 
 // Create new ticket
-app.post('/api/tickets', csrfProtection, async (req, res) => {
+app.post('/api/tickets', ticketCreationLimiter, csrfProtection, async (req, res) => {
     try {
-        const { nombre, email, telefono, servicio, prioridad, descripcion } = req.body;
+        // Security: Sanitizar entrada
+        const nombre = sanitizeInput(req.body.nombre);
+        const email = req.body.email;
+        const telefono = req.body.telefono;
+        const servicio = req.body.servicio;
+        const prioridad = req.body.prioridad || 'media';
+        const descripcion = sanitizeInput(req.body.descripcion);
 
         // Validate required fields
         if (!nombre || !email || !telefono || !servicio || !descripcion) {
-            return res.status(400).json({ 
-                error: 'Todos los campos obligatorios deben ser completados' 
+            return res.status(400).json({
+                error: 'Todos los campos obligatorios deben ser completados'
+            });
+        }
+
+        // Security: Validar email
+        if (!validateEmail(email)) {
+            return res.status(400).json({
+                error: 'El email proporcionado no es válido'
+            });
+        }
+
+        // Security: Validar teléfono
+        if (!validatePhone(telefono)) {
+            return res.status(400).json({
+                error: 'El teléfono proporcionado no es válido'
             });
         }
 
@@ -291,7 +413,7 @@ app.post('/api/tickets', csrfProtection, async (req, res) => {
             email,
             telefono,
             servicio,
-            prioridad: prioridad || 'media',
+            prioridad,
             descripcion
         });
 
@@ -301,7 +423,7 @@ app.post('/api/tickets', csrfProtection, async (req, res) => {
             email,
             telefono,
             servicio,
-            prioridad: prioridad || 'media',
+            prioridad,
             descripcion
         };
 
@@ -329,6 +451,17 @@ app.post('/api/tickets', csrfProtection, async (req, res) => {
             // Don't fail the request if email fails
         });
 
+        // Security: Log de auditoría
+        logger.info('Ticket created', {
+            ticketId: result.ticketId,
+            nombre,
+            email,
+            servicio,
+            prioridad,
+            ip: req.ip,
+            timestamp: new Date().toISOString()
+        });
+
         res.status(201).json({
             success: true,
             ticketId: result.ticketId,
@@ -338,9 +471,15 @@ app.post('/api/tickets', csrfProtection, async (req, res) => {
         });
 
     } catch (error) {
+        logger.error('Error creating ticket', {
+            error: error.message,
+            stack: error.stack,
+            ip: req.ip
+        });
+
         console.error('Error al crear ticket:', error);
-        res.status(500).json({ 
-            error: 'Error al procesar la solicitud. Por favor, inténtelo de nuevo.' 
+        res.status(500).json({
+            error: 'Error al procesar la solicitud. Por favor, inténtelo de nuevo.'
         });
     }
 });
@@ -376,13 +515,13 @@ app.patch('/api/tickets/:ticketId/status', requireAuth, csrfProtection, async (r
     try {
         const { estado } = req.body;
         const validStates = ['pendiente', 'en_proceso', 'resuelto', 'cerrado'];
-        
+
         if (!validStates.includes(estado)) {
             return res.status(400).json({ error: 'Estado no válido' });
         }
 
         const result = await updateTicketStatus(req.params.ticketId, estado);
-        
+
         if (result.changes > 0) {
             res.json({ success: true, message: 'Estado actualizado' });
         } else {
@@ -438,15 +577,15 @@ app.post('/api/tickets/:ticketId/horas', requireAuth, csrfProtection, async (req
     try {
         const { ticketId } = req.params;
         const { usuarioId, tecnicoNombre, horas, descripcion } = req.body;
-        
+
         if (!usuarioId || !tecnicoNombre || !horas) {
             return res.status(400).json({ error: 'Usuario, técnico y horas son requeridos' });
         }
-        
+
         if (horas <= 0) {
             return res.status(400).json({ error: 'Las horas deben ser mayor a 0' });
         }
-        
+
         const result = await addHorasTrabajo(
             ticketId,
             usuarioId,
@@ -455,11 +594,11 @@ app.post('/api/tickets/:ticketId/horas', requireAuth, csrfProtection, async (req
             descripcion,
             req.session.username
         );
-        
-        res.json({ 
-            success: true, 
+
+        res.json({
+            success: true,
             message: 'Horas registradas exitosamente',
-            id: result.id 
+            id: result.id
         });
     } catch (error) {
         console.error('Error registrando horas:', error);
@@ -473,7 +612,7 @@ app.get('/api/tickets/:ticketId/horas', requireAuth, csrfProtection, async (req,
         const horas = await getHorasTrabajo(req.params.ticketId);
         const total = await getTotalHorasTicket(req.params.ticketId);
         const porTecnico = await getHorasPorTecnico(req.params.ticketId);
-        
+
         res.json({
             horas: horas || [],
             total: total || 0,
@@ -489,13 +628,13 @@ app.get('/api/tickets/:ticketId/horas', requireAuth, csrfProtection, async (req,
 app.put('/api/tickets/horas/:id', requireAuth, csrfProtection, async (req, res) => {
     try {
         const { horas, descripcion } = req.body;
-        
+
         if (!horas || horas <= 0) {
             return res.status(400).json({ error: 'Las horas deben ser mayor a 0' });
         }
-        
+
         const result = await updateHorasTrabajo(req.params.id, horas, descripcion);
-        
+
         if (result.changes > 0) {
             res.json({ success: true, message: 'Horas actualizadas' });
         } else {
@@ -511,7 +650,7 @@ app.put('/api/tickets/horas/:id', requireAuth, csrfProtection, async (req, res) 
 app.delete('/api/tickets/horas/:id', requireAdmin, csrfProtection, async (req, res) => {
     try {
         const result = await deleteHorasTrabajo(req.params.id);
-        
+
         if (result.changes > 0) {
             res.json({ success: true, message: 'Registro de horas eliminado' });
         } else {
@@ -547,9 +686,9 @@ app.put('/api/tickets/:ticketId', requireAuth, csrfProtection, async (req, res) 
     try {
         const { ticketId } = req.params;
         const ticketData = req.body;
-        
+
         const result = await updateTicket(ticketId, ticketData);
-        
+
         if (result.changes > 0) {
             res.json({ success: true, message: 'Ticket actualizado exitosamente' });
         } else {
@@ -568,7 +707,7 @@ app.delete('/api/tickets/:ticketId', requireAuth, requireAdmin, csrfProtection, 
         const { ticketId } = req.params;
         const usuario = req.session.username;
         const result = await archiveTicket(ticketId, usuario);
-        
+
         if (result.changes > 0) {
             res.json({ success: true, message: 'Ticket archivado exitosamente' });
         } else {
@@ -585,7 +724,7 @@ app.post('/api/tickets/:ticketId/restore', requireAuth, requireAdmin, csrfProtec
     try {
         const { ticketId } = req.params;
         const result = await restoreTicket(ticketId);
-        
+
         if (result.changes > 0) {
             res.json({ success: true, message: 'Ticket restaurado exitosamente' });
         } else {
@@ -614,7 +753,7 @@ app.delete('/api/notes/:noteId', requireAuth, requireAdmin, csrfProtection, asyn
         const { noteId } = req.params;
         const usuario = req.session.username;
         const result = await archiveNote(noteId, usuario);
-        
+
         if (result.changes > 0) {
             res.json({ success: true, message: 'Nota archivada exitosamente' });
         } else {
@@ -631,7 +770,7 @@ app.post('/api/notes/:noteId/restore', requireAuth, requireAdmin, csrfProtection
     try {
         const { noteId } = req.params;
         const result = await restoreNote(noteId);
-        
+
         if (result.changes > 0) {
             res.json({ success: true, message: 'Nota restaurada exitosamente' });
         } else {
@@ -697,11 +836,11 @@ app.get('/api/servicios', requireAuth, csrfProtection, async (req, res) => {
 app.post('/api/servicios', requireAuth, csrfProtection, async (req, res) => {
     try {
         const { codigo, nombre, descripcion } = req.body;
-        
+
         if (!codigo || !nombre) {
             return res.status(400).json({ error: 'Código y nombre son requeridos' });
         }
-        
+
         const result = await createService(codigo, nombre, descripcion || '');
         res.json({ success: true, message: 'Servicio creado exitosamente', id: result.id });
     } catch (error) {
@@ -715,13 +854,13 @@ app.put('/api/servicios/:id', requireAuth, csrfProtection, async (req, res) => {
     try {
         const { id } = req.params;
         const { codigo, nombre, descripcion, activo } = req.body;
-        
+
         if (!codigo || !nombre) {
             return res.status(400).json({ error: 'Código y nombre son requeridos' });
         }
-        
+
         const result = await updateService(id, codigo, nombre, descripcion || '', activo !== undefined ? activo : 1);
-        
+
         if (result.changes > 0) {
             res.json({ success: true, message: 'Servicio actualizado exitosamente' });
         } else {
@@ -738,7 +877,7 @@ app.delete('/api/servicios/:id', requireAuth, csrfProtection, async (req, res) =
     try {
         const { id } = req.params;
         const result = await deleteService(id);
-        
+
         if (result.changes > 0) {
             res.json({ success: true, message: 'Servicio eliminado exitosamente' });
         } else {
@@ -747,6 +886,95 @@ app.delete('/api/servicios/:id', requireAuth, csrfProtection, async (req, res) =
     } catch (error) {
         console.error('Error eliminando servicio:', error);
         res.status(500).json({ error: 'Error eliminando servicio' });
+    }
+});
+
+// ==================== API CITAS / CALENDARIO ====================
+
+// Get all appointments
+app.get('/api/appointments', requireAuth, csrfProtection, async (req, res) => {
+    try {
+        let appointments;
+        if (req.session.rol === 'admin') {
+            appointments = await getAllAppointments();
+        } else {
+            appointments = await getAppointmentsByTechnician(req.session.userId);
+        }
+        res.json(appointments);
+    } catch (error) {
+        console.error('Error al obtener citas:', error);
+        res.status(500).json({ error: 'Error al obtener citas' });
+    }
+});
+
+// Create new appointment
+app.post('/api/appointments', requireAuth, csrfProtection, async (req, res) => {
+    try {
+        const { ticket_id, tecnico_id, fecha_cita, descripcion } = req.body;
+
+        if (!ticket_id || !tecnico_id || !fecha_cita) {
+            return res.status(400).json({ error: 'Ticket, técnico y fecha son requeridos' });
+        }
+
+        const result = await createAppointment({ ticket_id, tecnico_id, fecha_cita, descripcion });
+
+        // Trigger WhatsApp notification if WhatsApp is ready
+        const whatsappService = require('./whatsapp');
+        if (whatsappService.isReady) {
+            const users = await getAllUsers();
+            const technician = users.find(u => u.id === parseInt(tecnico_id));
+            const ticket = await getTicketById(ticket_id);
+
+            if (technician && technician.whatsapp && ticket) {
+                const message = `📅 *NUEVA CITA ASIGNADA*\n\n` +
+                    `Ticket: ${ticket.ticket_id}\n` +
+                    `Cliente: ${ticket.nombre}\n` +
+                    `Fecha: ${new Date(fecha_cita).toLocaleString('es-ES')}\n` +
+                    `Descripción: ${descripcion || 'Sin descripción'}\n` +
+                    `Servicio: ${ticket.servicio}\n\n` +
+                    `Por favor, confirma asistencia.`;
+
+                whatsappService.sendMessage(technician.whatsapp, message)
+                    .then(() => console.log(`✓ Notificación de WhatsApp enviada al técnico ${technician.username}`))
+                    .catch(err => console.error('Error enviando WhatsApp:', err));
+            }
+        }
+
+        res.status(201).json({ success: true, id: result.id });
+    } catch (error) {
+        console.error('Error al crear cita:', error);
+        res.status(500).json({ error: 'Error al crear cita' });
+    }
+});
+
+// Update appointment status
+app.patch('/api/appointments/:id/status', requireAuth, csrfProtection, async (req, res) => {
+    try {
+        const { estado } = req.body;
+        const result = await updateAppointmentStatus(req.params.id, estado);
+        if (result.changes > 0) {
+            res.json({ success: true, message: 'Estado de cita actualizado' });
+        } else {
+            res.status(404).json({ error: 'Cita no encontrada' });
+        }
+    } catch (error) {
+        console.error('Error al actualizar cita:', error);
+        res.status(500).json({ error: 'Error al actualizar cita' });
+    }
+});
+
+// Delete appointment
+app.delete('/api/appointments/:id', requireAuth, csrfProtection, async (req, res) => {
+    try {
+        const result = await deleteAppointment(req.params.id);
+        if (result.changes > 0) {
+            res.json({ success: true, message: 'Cita eliminada' });
+        } else {
+            res.status(404).json({ error: 'Cita no encontrada' });
+        }
+    } catch (error) {
+        console.error('Error al eliminar cita:', error);
+        res.status(500).json({ error: 'Error al eliminar cita' });
     }
 });
 
@@ -783,13 +1011,13 @@ app.put('/api/materiales/:id', requireAuth, requireAdmin, csrfProtection, async 
     try {
         const { id } = req.params;
         const { nombre, descripcion, precio, activo } = req.body;
-        
+
         if (!nombre || precio === undefined || activo === undefined) {
             return res.status(400).json({ error: 'Nombre, precio y estado de activación son requeridos' });
         }
-        
+
         const result = await updateMaterial(id, nombre, descripcion || '', precio, activo);
-        
+
         if (result.changes > 0) {
             res.json({ success: true, message: 'Material actualizado exitosamente' });
         } else {
@@ -806,7 +1034,7 @@ app.delete('/api/materiales/:id', requireAuth, requireAdmin, csrfProtection, asy
     try {
         const { id } = req.params;
         const result = await deleteMaterial(id);
-        
+
         if (result.changes > 0) {
             res.json({ success: true, message: 'Material eliminado exitosamente' });
         } else {
@@ -837,11 +1065,11 @@ app.post('/api/tickets/:ticketId/materiales', requireAuth, csrfProtection, async
     try {
         const { ticketId } = req.params;
         const { material_id, cantidad } = req.body;
-        
+
         if (!material_id || !cantidad || cantidad <= 0) {
             return res.status(400).json({ error: 'ID de material y cantidad (mayor a 0) son requeridos.' });
         }
-        
+
         // Get material to fetch current price
         const material = await getMaterialById(material_id);
         if (!material) {
@@ -855,9 +1083,9 @@ app.post('/api/tickets/:ticketId/materiales', requireAuth, csrfProtection, async
             material.precio, // Use current price from inventory
             req.session.username
         );
-        
+
         res.status(201).json({ success: true, message: 'Material añadido al ticket', id: result.id });
-        
+
     } catch (error) {
         console.error('Error añadiendo material al ticket:', error);
         res.status(500).json({ error: 'Error añadiendo material al ticket' });
@@ -902,7 +1130,7 @@ app.post('/api/tickets/:ticketId/invoices', requireAuth, requireAdmin, csrfProte
         // Add worked hours to invoice items
         horas.forEach(h => {
             // Assuming a fixed price per hour for now, this can be improved
-            const precioHora = process.env.PRICE_PER_HOUR || 50; 
+            const precioHora = process.env.PRICE_PER_HOUR || 50;
             items.push({
                 concepto: `Horas de técnico: ${h.tecnico_nombre}`,
                 descripcion: h.descripcion || `Horas trabajadas en el ticket ${ticketId}`,
@@ -977,7 +1205,7 @@ app.post('/api/invoices/multi-ticket', requireAuth, requireAdmin, csrfProtection
         for (const item of items) {
             subtotal += item.total || 0;
         }
-        
+
         const iva_percent = 21;
         const iva = subtotal * (iva_percent / 100);
         const total = subtotal + iva;
@@ -1047,6 +1275,54 @@ app.get('/api/invoices/:invoiceId', requireAuth, csrfProtection, async (req, res
     }
 });
 
+// Get all invoices
+app.get('/api/facturas', requireAuth, csrfProtection, async (req, res) => {
+    try {
+        const invoices = await getAllInvoices();
+        res.json(invoices);
+    } catch (error) {
+        console.error('Error obteniendo facturas:', error);
+        res.status(500).json({ error: 'Error obteniendo facturas.' });
+    }
+});
+
+// Present invoice (mark as submitted and lock it)
+app.put('/api/facturas/:id/presentar', requireAuth, requireAdmin, csrfProtection, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const result = await presentarInvoice(id);
+        res.json({ success: true, message: 'Factura presentada y bloqueada exitosamente', changes: result.changes });
+    } catch (error) {
+        console.error('Error presentando factura:', error);
+        res.status(error.message.includes('bloqueada') ? 403 : 500).json({ error: error.message });
+    }
+});
+
+// Update invoice (only if not locked)
+app.put('/api/facturas/:id', requireAuth, requireAdmin, csrfProtection, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { subtotal, iva, total, estado } = req.body;
+        const result = await updateInvoice(id, { subtotal, iva, total, estado });
+        res.json({ success: true, message: 'Factura actualizada exitosamente', changes: result.changes });
+    } catch (error) {
+        console.error('Error actualizando factura:', error);
+        res.status(error.message.includes('bloqueada') ? 403 : 500).json({ error: error.message });
+    }
+});
+
+// Delete invoice (only if not locked)
+app.delete('/api/facturas/:id', requireAuth, requireAdmin, csrfProtection, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const result = await deleteInvoice(id);
+        res.json({ success: true, message: 'Factura eliminada exitosamente', changes: result.changes });
+    } catch (error) {
+        console.error('Error eliminando factura:', error);
+        res.status(error.message.includes('bloqueada') ? 403 : 500).json({ error: error.message });
+    }
+});
+
 // ==================== API EMPRESAS ====================
 
 // Get all empresas
@@ -1078,13 +1354,13 @@ app.get('/api/empresas/:id', requireAuth, csrfProtection, async (req, res) => {
 // Create empresa
 app.post('/api/empresas', requireAuth, requireAdmin, csrfProtection, async (req, res) => {
     try {
-        const { nombre, cif, direccion, telefono, email } = req.body;
-        
+        const { nombre, cif, direccion, telefono, email, verifactu } = req.body;
+
         if (!nombre) {
             return res.status(400).json({ error: 'Nombre es requerido' });
         }
-        
-        const result = await createEmpresa(nombre, cif || '', direccion || '', telefono || '', email || '');
+
+        const result = await createEmpresa(nombre, cif || '', direccion || '', telefono || '', email || '', verifactu !== undefined ? verifactu : 1);
         res.json({ success: true, message: 'Empresa creada exitosamente', id: result.id });
     } catch (error) {
         console.error('Error creando empresa:', error);
@@ -1096,14 +1372,14 @@ app.post('/api/empresas', requireAuth, requireAdmin, csrfProtection, async (req,
 app.put('/api/empresas/:id', requireAuth, requireAdmin, csrfProtection, async (req, res) => {
     try {
         const { id } = req.params;
-        const { nombre, cif, direccion, telefono, email, activo } = req.body;
-        
+        const { nombre, cif, direccion, telefono, email, activo, verifactu } = req.body;
+
         if (!nombre) {
             return res.status(400).json({ error: 'Nombre es requerido' });
         }
-        
-        const result = await updateEmpresa(id, nombre, cif || '', direccion || '', telefono || '', email || '', activo !== undefined ? activo : 1);
-        
+
+        const result = await updateEmpresa(id, nombre, cif || '', direccion || '', telefono || '', email || '', activo !== undefined ? activo : 1, verifactu !== undefined ? verifactu : 1);
+
         if (result.changes > 0) {
             res.json({ success: true, message: 'Empresa actualizada exitosamente' });
         } else {
@@ -1120,7 +1396,7 @@ app.delete('/api/empresas/:id', requireAuth, requireAdmin, csrfProtection, async
     try {
         const { id } = req.params;
         const result = await deleteEmpresa(id);
-        
+
         if (result.changes > 0) {
             res.json({ success: true, message: 'Empresa eliminada exitosamente' });
         } else {
@@ -1137,13 +1413,13 @@ app.post('/api/tickets/:ticketId/transferir-empresa', requireAuth, requireAdmin,
     try {
         const { ticketId } = req.params;
         const { empresa_id } = req.body;
-        
+
         if (!empresa_id) {
             return res.status(400).json({ error: 'ID de empresa es requerido' });
         }
-        
+
         const result = await transferirTicketEmpresa(ticketId, empresa_id);
-        
+
         if (result.changes > 0) {
             res.json({ success: true, message: 'Ticket transferido exitosamente a la nueva empresa' });
         } else {
@@ -1172,31 +1448,64 @@ app.get('/api/usuarios', requireAuth, csrfProtection, async (req, res) => {
 app.post('/api/usuarios', requireAuth, csrfProtection, async (req, res) => {
     try {
         const { username, password, nombre_completo, email, rol } = req.body;
-        
+
         // Validar datos requeridos
         if (!username || !password) {
             return res.status(400).json({ error: 'Usuario y contraseña son obligatorios' });
         }
-        
+
+        // Security: Validar fortaleza de contraseña
+        const passwordValidation = validatePasswordStrength(password);
+        if (!passwordValidation.valid) {
+            return res.status(400).json({
+                error: 'La contraseña no cumple con los requisitos de seguridad',
+                details: passwordValidation.errors
+            });
+        }
+
+        // Security: Validar email si se proporciona
+        if (email && !validateEmail(email)) {
+            return res.status(400).json({ error: 'El email proporcionado no es válido' });
+        }
+
         // Verificar que el usuario no exista
         const existingUser = await getUserByUsername(username);
         if (existingUser) {
             return res.status(400).json({ error: 'El usuario ya existe' });
         }
-        
+
         // Hash de la contraseña
         const saltRounds = 10;
         const passwordHash = await bcrypt.hash(password, saltRounds);
-        
+
+        // Security: Sanitizar entrada
+        const sanitizedUsername = sanitizeInput(username);
+        const sanitizedNombreCompleto = nombre_completo ? sanitizeInput(nombre_completo) : null;
+
         // Crear usuario
-        const result = await createUser(username, passwordHash, nombre_completo, email, rol || 'tecnico');
-        
-        res.json({ 
-            success: true, 
+        const result = await createUser(sanitizedUsername, passwordHash, sanitizedNombreCompleto, email, rol || 'tecnico');
+
+        // Security: Log de auditoría
+        logger.info('User created', {
+            username: sanitizedUsername,
+            rol: rol || 'tecnico',
+            createdBy: req.session.username,
+            ip: req.ip,
+            timestamp: new Date().toISOString()
+        });
+
+        res.json({
+            success: true,
             message: 'Usuario creado exitosamente',
-            id: result.id 
+            id: result.id
         });
     } catch (error) {
+        logger.error('Error creating user', {
+            error: error.message,
+            createdBy: req.session.username,
+            ip: req.ip
+        });
+
         console.error('Error creando usuario:', error);
         res.status(500).json({ error: 'Error creando usuario' });
     }
@@ -1207,17 +1516,17 @@ app.put('/api/usuarios/:id', requireAuth, csrfProtection, async (req, res) => {
     try {
         const { id } = req.params;
         const { nombre_completo, email, rol, activo, password } = req.body;
-        
+
         const updateData = { nombre_completo, email, rol, activo };
-        
+
         // Si se proporciona nueva contraseña, hashearla
         if (password) {
             const saltRounds = 10;
             updateData.password_hash = await bcrypt.hash(password, saltRounds);
         }
-        
+
         const result = await updateUser(id, updateData);
-        
+
         if (result.changes > 0) {
             res.json({ success: true, message: 'Usuario actualizado exitosamente' });
         } else {
@@ -1233,14 +1542,14 @@ app.put('/api/usuarios/:id', requireAuth, csrfProtection, async (req, res) => {
 app.delete('/api/usuarios/:id', requireAuth, csrfProtection, async (req, res) => {
     try {
         const { id } = req.params;
-        
+
         // No permitir eliminar al propio usuario
         if (req.session.userId == id) {
             return res.status(400).json({ error: 'No puedes eliminarte a ti mismo' });
         }
-        
+
         const result = await deleteUser(id);
-        
+
         if (result.changes > 0) {
             res.json({ success: true, message: 'Usuario eliminado exitosamente' });
         } else {
@@ -1280,7 +1589,7 @@ app.get('/api/session', csrfProtection, (req, res) => {
 app.get('/api/setup/check', csrfProtection, async (req, res) => {
     try {
         const adminUser = await getUserByUsername('admin');
-        
+
         if (!adminUser) {
             return res.json({
                 status: 'error',
@@ -1288,9 +1597,9 @@ app.get('/api/setup/check', csrfProtection, async (req, res) => {
                 needsSetup: true
             });
         }
-        
+
         const isHashed = adminUser.password_hash.startsWith('$2');
-        
+
         res.json({
             status: 'ok',
             adminExists: true,
@@ -1299,9 +1608,9 @@ app.get('/api/setup/check', csrfProtection, async (req, res) => {
         });
     } catch (error) {
         console.error('Error en setup check:', error);
-        res.status(500).json({ 
+        res.status(500).json({
             status: 'error',
-            message: error.message 
+            message: error.message
         });
     }
 });
@@ -1310,16 +1619,16 @@ app.get('/api/setup/check', csrfProtection, async (req, res) => {
 app.get('/api/diagnostics/horas', csrfProtection, async (req, res) => {
     try {
         const { db } = require('./database');
-        
+
         // Check if table exists
         const tableCheck = new Promise((resolve) => {
             db.get(`SELECT name FROM sqlite_master WHERE type='table' AND name='horas_trabajo'`, (err, row) => {
                 resolve({ tableExists: !!row, error: err ? err.message : null });
             });
         });
-        
+
         const result = await tableCheck;
-        
+
         res.json({
             status: result.tableExists ? 'ok' : 'missing',
             horasTableExists: result.tableExists,
@@ -1327,9 +1636,9 @@ app.get('/api/diagnostics/horas', csrfProtection, async (req, res) => {
             error: result.error
         });
     } catch (error) {
-        res.status(500).json({ 
+        res.status(500).json({
             status: 'error',
-            error: error.message 
+            error: error.message
         });
     }
 });
@@ -1343,34 +1652,36 @@ app.get('/api/backups', requireAuth, csrfProtection, async (req, res) => {
         if (!fs.existsSync(backupDir)) {
             return res.json({ backups: [] });
         }
-        
+
         const files = fs.readdirSync(backupDir)
-            .filter(f => f.endsWith('.tar.gz'))
+            .filter(f => f.endsWith('.tar.gz') || f.endsWith('.json'))
             .sort()
             .reverse();
-        
+
         const backups = files.map(file => {
             const filePath = path.join(backupDir, file);
             const stats = fs.statSync(filePath);
             const infoPath = path.join(backupDir, file.replace('.tar.gz', '_info.json'));
             let info = {};
-            
+
             if (fs.existsSync(infoPath)) {
                 try {
                     info = JSON.parse(fs.readFileSync(infoPath, 'utf8'));
-                } catch (e) {}
+                } catch (e) { }
             }
-            
+
             return {
                 name: file,
                 size: stats.size,
-                sizeReadable: (stats.size / 1024 / 1024).toFixed(2) + ' MB',
+                sizeReadable: file.endsWith('.json')
+                    ? (stats.size / 1024).toFixed(2) + ' KB'
+                    : (stats.size / 1024 / 1024).toFixed(2) + ' MB',
                 created: stats.mtime.toISOString(),
                 createdReadable: stats.mtime.toLocaleString('es-ES'),
                 info: info
             };
         });
-        
+
         res.json({ backups });
     } catch (error) {
         res.status(500).json({ error: error.message });
@@ -1380,41 +1691,47 @@ app.get('/api/backups', requireAuth, csrfProtection, async (req, res) => {
 // Create backup now
 app.post('/api/backups/create', requireAuth, requireAdmin, csrfProtection, async (req, res) => {
     try {
-        const backupScript = path.join(__dirname, 'backup.js');
-        if (!fs.existsSync(backupScript)) {
-            return res.status(404).json({ error: 'Script de backup no encontrado' });
-        }
-        
-        // Ejecutar script de backup
-        execSync(`node "${backupScript}"`, { cwd: __dirname });
-        
-        // Obtener el backup más reciente creado
+        // Base de datos en memoria - exportar como JSON
+        const backup = {
+            timestamp: new Date().toISOString(),
+            note: 'Base de datos en memoria - backup exportado como JSON',
+            data: {
+                tickets: getAllTickets(true),
+                usuarios: getAllUsers(),
+                servicios: getAllServices(true),
+                empresas: getAllEmpresas(),
+                materiales: getAllMaterials(),
+                facturas: getAllInvoices()
+            }
+        };
+
         const backupDir = path.join(__dirname, 'backups');
-        const files = fs.readdirSync(backupDir)
-            .filter(f => f.endsWith('.tar.gz'))
-            .sort()
-            .reverse();
-        
-        if (files.length === 0) {
-            return res.status(500).json({ error: 'Backup creado pero no encontrado' });
+        if (!fs.existsSync(backupDir)) {
+            fs.mkdirSync(backupDir, { recursive: true });
         }
-        
-        const latestBackup = files[0];
-        const filePath = path.join(backupDir, latestBackup);
-        const stats = fs.statSync(filePath);
-        
+
+        const timestamp = new Date().toISOString().replace(/:/g, '-').split('.')[0];
+        const backupFile = path.join(backupDir, `backup_${timestamp}.json`);
+
+        fs.writeFileSync(backupFile, JSON.stringify(backup, null, 2));
+        const stats = fs.statSync(backupFile);
+
         res.json({
             success: true,
             message: 'Backup creado exitosamente',
             backup: {
-                name: latestBackup,
+                name: `backup_${timestamp}.json`,
                 size: stats.size,
-                sizeReadable: (stats.size / 1024 / 1024).toFixed(2) + ' MB',
-                created: stats.mtime.toISOString()
-            }
+                sizeReadable: (stats.size / 1024).toFixed(2) + ' KB',
+                created: new Date().toISOString()
+            },
+            note: 'Base de datos en memoria - backup exportado como JSON'
         });
     } catch (error) {
-        res.status(500).json({ error: 'Error al crear backup: ' + error.message });
+        console.error('❌ Error durante el backup:', error.message);
+        res.status(500).json({
+            error: 'Error al crear backup: ' + error.message
+        });
     }
 });
 
@@ -1426,13 +1743,13 @@ app.get('/api/backups/download/:filename', requireAuth, csrfProtection, (req, re
         if (filename.includes('..') || filename.includes('/')) {
             return res.status(400).json({ error: 'Nombre de archivo inválido' });
         }
-        
+
         const filePath = path.join(__dirname, 'backups', filename);
-        
+
         if (!fs.existsSync(filePath)) {
             return res.status(404).json({ error: 'Backup no encontrado' });
         }
-        
+
         // Enviar archivo para descargar
         res.download(filePath, filename, (err) => {
             if (err) console.error('Error descargando:', err);
@@ -1446,28 +1763,28 @@ app.get('/api/backups/download/:filename', requireAuth, csrfProtection, (req, re
 app.post('/api/backups/restore', requireAuth, requireAdmin, upload.single('backupFile'), csrfProtection, async (req, res) => {
     try {
         const file = req.file;
-        
+
         if (!file) {
             return res.status(400).json({ error: 'No se subió ningún archivo' });
         }
-        
+
         if (!file.originalname.endsWith('.tar.gz')) {
             fs.unlinkSync(file.path);
             return res.status(400).json({ error: 'El archivo debe ser .tar.gz' });
         }
-        
+
         const backupDir = path.join(__dirname, 'backups');
         const finalPath = path.join(backupDir, file.originalname);
-        
+
         // Mover archivo a directorio de backups
         fs.renameSync(file.path, finalPath);
-        
+
         // Ejecutar restauración
         const restoreScript = path.join(__dirname, 'restore.js');
         if (!fs.existsSync(restoreScript)) {
             return res.status(404).json({ error: 'Script de restauración no encontrado' });
         }
-        
+
         // Para restore, sería más seguro que el usuario confirme manualmente
         res.json({
             success: true,
@@ -1485,19 +1802,19 @@ app.post('/api/backups/restore', requireAuth, requireAdmin, upload.single('backu
 app.delete('/api/backups/:filename', requireAuth, requireAdmin, csrfProtection, (req, res) => {
     try {
         const filename = req.params.filename;
-        
+
         if (filename.includes('..') || filename.includes('/')) {
             return res.status(400).json({ error: 'Nombre de archivo inválido' });
         }
-        
+
         const filePath = path.join(__dirname, 'backups', filename);
-        
+
         if (!fs.existsSync(filePath)) {
             return res.status(404).json({ error: 'Backup no encontrado' });
         }
-        
+
         fs.unlinkSync(filePath);
-        
+
         res.json({
             success: true,
             message: 'Backup eliminado exitosamente'
@@ -1511,21 +1828,21 @@ app.delete('/api/backups/:filename', requireAuth, requireAdmin, csrfProtection, 
 app.post('/api/setup/update-admin-password', csrfProtection, async (req, res) => {
     try {
         const { currentPassword, newPassword, confirmPassword } = req.body;
-        
+
         if (!currentPassword || !newPassword || !confirmPassword) {
             return res.status(400).json({ error: 'Todos los campos son requeridos' });
         }
-        
+
         // Obtener usuario admin
         const adminUser = await getUserByUsername('admin');
         if (!adminUser) {
             return res.status(500).json({ error: 'Usuario admin no encontrado en la base de datos' });
         }
-        
+
         // Verificar contraseña actual
         // Check if password is hashed or plaintext
         let isPasswordValid = false;
-        
+
         if (adminUser.password_hash.startsWith('$2')) {
             // Password is hashed, use bcrypt
             isPasswordValid = await bcrypt.compare(currentPassword, adminUser.password_hash);
@@ -1533,30 +1850,30 @@ app.post('/api/setup/update-admin-password', csrfProtection, async (req, res) =>
             // Password is plaintext (migration case), compare directly
             isPasswordValid = currentPassword === adminUser.password_hash;
         }
-        
+
         if (!isPasswordValid) {
             return res.status(401).json({ error: 'Contraseña actual incorrecta' });
         }
-        
+
         // Validar nueva contraseña
         if (newPassword.length < 6) {
             return res.status(400).json({ error: 'La nueva contraseña debe tener al menos 6 caracteres' });
         }
-        
+
         if (newPassword !== confirmPassword) {
             return res.status(400).json({ error: 'Las contraseñas no coinciden' });
         }
-        
+
         // Hashear nueva contraseña
         const saltRounds = 10;
         const passwordHash = await bcrypt.hash(newPassword, saltRounds);
-        
+
         // Actualizar en la base de datos
         const result = await updateUser(adminUser.id, { password_hash: passwordHash });
-        
+
         if (result.changes > 0) {
-            res.json({ 
-                success: true, 
+            res.json({
+                success: true,
                 message: 'Contraseña del admin actualizada exitosamente'
             });
         } else {
@@ -1572,21 +1889,21 @@ app.post('/api/setup/update-admin-password', csrfProtection, async (req, res) =>
 app.post('/api/setup/create-root-user', csrfProtection, async (req, res) => {
     try {
         const { adminPassword, rootPassword } = req.body;
-        
+
         if (!adminPassword || !rootPassword) {
             return res.status(400).json({ error: 'Todos los campos son requeridos' });
         }
-        
+
         // Obtener usuario admin para validar
         const adminUser = await getUserByUsername('admin');
         if (!adminUser) {
             return res.status(500).json({ error: 'Usuario admin no encontrado' });
         }
-        
+
         // Verificar contraseña admin
         // Check if password is hashed or plaintext
         let isPasswordValid = false;
-        
+
         if (adminUser.password_hash.startsWith('$2')) {
             // Password is hashed, use bcrypt
             isPasswordValid = await bcrypt.compare(adminPassword, adminUser.password_hash);
@@ -1594,26 +1911,26 @@ app.post('/api/setup/create-root-user', csrfProtection, async (req, res) => {
             // Password is plaintext (migration case), compare directly
             isPasswordValid = adminPassword === adminUser.password_hash;
         }
-        
+
         if (!isPasswordValid) {
             return res.status(401).json({ error: 'Contraseña del admin incorrecta' });
         }
-        
+
         // Verificar si Root ya existe
         const existingRoot = await getUserByUsername('Root');
         if (existingRoot) {
             return res.status(400).json({ error: 'El usuario Root ya existe' });
         }
-        
+
         // Validar contraseña de Root
         if (rootPassword.length < 6) {
             return res.status(400).json({ error: 'La contraseña debe tener al menos 6 caracteres' });
         }
-        
+
         // Crear usuario Root
         const saltRounds = 10;
         const rootHash = await bcrypt.hash(rootPassword, saltRounds);
-        
+
         const newRoot = await createUser(
             'Root',
             rootHash,
@@ -1621,9 +1938,9 @@ app.post('/api/setup/create-root-user', csrfProtection, async (req, res) => {
             'root@admin.local',
             'admin'
         );
-        
-        res.json({ 
-            success: true, 
+
+        res.json({
+            success: true,
             message: 'Usuario Root creado exitosamente',
             id: newRoot.id
         });
@@ -1638,7 +1955,7 @@ app.get('/api/config-check', (req, res) => {
     const username = process.env.ADMIN_USERNAME || 'admin';
     const hasPassword = !!(process.env.ADMIN_PASSWORD);
     const isProduction = process.env.NODE_ENV === 'production';
-    
+
     res.json({
         environment: process.env.NODE_ENV || 'development',
         usernameConfigured: username,

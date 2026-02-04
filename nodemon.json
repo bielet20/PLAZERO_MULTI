@@ -1,0 +1,12 @@
+{
+    "ignore": [
+        "backups/**/*",
+        "data/**/*",
+        "node_modules/**/*",
+        ".wwebjs_auth/**/*",
+        ".wwebjs_cache/**/*",
+        "*.tar.gz"
+    ],
+    "delay": 2500,
+    "ext": "js,json,html,css"
+}

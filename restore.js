@@ -45,7 +45,7 @@ const extractDir = path.join(BACKUP_DIR, backupFile.replace('.tar.gz', ''));
 console.log(`Selected: ${backupFile}`);
 console.log(`\n${'='.repeat(50)}`);
 console.log('⚠️  IMPORTANTE:');
-console.log('${'='.repeat(50)}`);
+console.log(`${'='.repeat(50)}`);
 console.log('Esta operación reemplazará los datos actuales.');
 console.log('Se recomienda hacer un backup actual primero.\n');
 
@@ -54,28 +54,47 @@ console.log('📥 Extrayendo backup...');
 try {
     execSync(`cd "${BACKUP_DIR}" && tar -xzf "${backupFile}"`);
     console.log('✓ Extracción completada');
-    
+
     console.log('\n📂 Restaurando archivos...');
-    
+
     // Restaurar base de datos
     const dbFile = path.join(extractDir, 'tickets.db');
     if (fs.existsSync(dbFile)) {
-        fs.copyFileSync(dbFile, path.join(__dirname, 'tickets.db'));
-        console.log('✓ Base de datos restaurada');
+        const targetDb = path.join(__dirname, 'data', 'tickets.db');
+        if (!fs.existsSync(path.dirname(targetDb))) fs.mkdirSync(path.dirname(targetDb), { recursive: true });
+        fs.copyFileSync(dbFile, targetDb);
+        console.log('✓ Base de datos restaurada en data/tickets.db');
     }
-    
+
+    // Restaurar sesiones de WhatsApp
+    const whatsappDirs = ['.wwebjs_auth', '.wwebjs_cache'];
+    whatsappDirs.forEach(dir => {
+        const dirPath = path.join(extractDir, dir);
+        if (fs.existsSync(dirPath)) {
+            execSync(`rm -rf "${path.join(__dirname, dir)}" && cp -r "${dirPath}" "${path.join(__dirname, dir)}"`);
+            console.log(`✓ Sesión de WhatsApp (${dir}) restaurada`);
+        }
+    });
+
+    // Restaurar .env
+    const envFile = path.join(extractDir, '.env');
+    if (fs.existsSync(envFile)) {
+        fs.copyFileSync(envFile, path.join(__dirname, '.env'));
+        console.log('✓ Archivo .env restaurado');
+    }
+
     // Restaurar archivos públicos
     const publicDir = path.join(extractDir, 'public');
     if (fs.existsSync(publicDir)) {
         execSync(`rm -rf "${path.join(__dirname, 'public')}" && cp -r "${publicDir}" "${path.join(__dirname, 'public')}"`);
         console.log('✓ Archivos públicos restaurados');
     }
-    
+
     // Limpiar extracción
     execSync(`rm -rf "${extractDir}"`);
-    
+
     console.log(`\n✅ Restauración completada exitosamente\n`);
-    
+
 } catch (error) {
     console.error('\n❌ Error durante la restauración:');
     console.error(error.message);

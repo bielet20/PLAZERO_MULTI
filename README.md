@@ -1,6 +1,6 @@
-# Sistema de Gestión de Servicios Informáticos
+# Sistema de Gestión de Construcción, Reparación y Obras
 
-Sistema profesional de gestión de tickets para servicios informáticos con integración completa de WhatsApp Web.
+Sistema profesional de gestión de tickets para servicios de construcción, obras y mantenimiento con integración completa de WhatsApp Web.
 
 ## 🚀 Características
 
@@ -11,7 +11,7 @@ Sistema profesional de gestión de tickets para servicios informáticos con inte
 - **Notificaciones automáticas** por email
 - **Plantillas de mensajes** WhatsApp para técnicos
 - **Historial de contactos** y conversaciones
-- **8 servicios disponibles** incluyendo desarrollo web y apps
+- **4 servicios especializados** incluyendo búsqueda de fugas
 
 ## 📱 WhatsApp Integrado
 
@@ -28,14 +28,10 @@ Sistema profesional de gestión de tickets para servicios informáticos con inte
 
 ## 📋 Servicios Ofrecidos
 
-1. Reparación de Equipos
-2. Montaje de Redes
-3. Soporte de Impresoras
-4. Seguridad Informática
-5. Detección de Errores
-6. Soporte Técnico General
-7. **Programación de Aplicaciones Personalizadas** ⭐
-8. **Desarrollo de Entornos Web** ⭐
+1. Construcción
+2. Reparación
+3. Obras
+4. Búsqueda de Fugas
 
 ## 🐳 Despliegue
 
@@ -163,7 +159,7 @@ Para Gmail:
 
 SQLite con 4 tablas:
 - **tickets**: Todos los tickets generados
-- **servicios**: Catálogo de servicios (8 servicios)
+- **servicios**: Catálogo de servicios (4 servicios)
 - **notas**: Notas internas de técnicos
 - **whatsapp_contactos**: Historial de contactos WhatsApp
 

@@ -1,39 +1,38 @@
 async function createInvoiceForTicket(ticketId) {
-            if (!confirm('¿Está seguro de que desea crear una factura para este ticket? Se utilizarán las horas y materiales registrados.')) {
-                return;
-            }
+    const userConfirmed = await showConfirm('¿Está seguro de que desea crear una factura para este ticket? Se utilizarán las horas y materiales registrados.', 'Crear Factura');
+    if (!userConfirmed) return;
 
-            try {
-                const response = await fetch(`/api/tickets/${ticketId}/invoices`, {
-                    method: 'POST',
-                        headers: { 'Content-Type': 'application/json', 'csrf-token': csrfToken },
-                    body: JSON.stringify({ iva_percent: 21 }) 
-                });
+    try {
+        const response = await fetch(`/api/tickets/${ticketId}/invoices`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'csrf-token': csrfToken },
+            body: JSON.stringify({ iva_percent: 21 })
+        });
 
-                const result = await response.json();
-                if (!response.ok) {
-                    throw new Error(result.error);
-                }
-
-                alert(`Factura ${result.invoiceId} creada exitosamente.`);
-                viewTicket(ticketId); // Recargar los detalles del ticket para mostrar la nueva factura
-
-            } catch (error) {
-                console.error('Error creating invoice:', error);
-                alert('Error al crear la factura: ' + error.message);
-            }
+        const result = await response.json();
+        if (!response.ok) {
+            throw new Error(result.error);
         }
 
-        async function viewInvoice(invoiceId) {
-            try {
-                const response = await fetch(`/api/invoices/${invoiceId}`);
-                if (!response.ok) {
-                    const result = await response.json();
-                    throw new Error(result.error);
-                }
-                const invoice = await response.json();
+        showNotification(`Factura ${result.invoiceId} creada exitosamente.`, 'success');
+        viewTicket(ticketId); // Recargar los detalles del ticket para mostrar la nueva factura
 
-                const itemsHtml = invoice.items.map(item => `
+    } catch (error) {
+        console.error('Error creating invoice:', error);
+        showNotification('Error al crear la factura: ' + error.message, 'error');
+    }
+}
+
+async function viewInvoice(invoiceId) {
+    try {
+        const response = await fetch(`/api/invoices/${invoiceId}`);
+        if (!response.ok) {
+            const result = await response.json();
+            throw new Error(result.error);
+        }
+        const invoice = await response.json();
+
+        const itemsHtml = invoice.items.map(item => `
                     <tr>
                         <td>${item.concepto}</td>
                         <td>${item.descripcion || ''}</td>
@@ -43,7 +42,7 @@ async function createInvoiceForTicket(ticketId) {
                     </tr>
                 `).join('');
 
-                const detailsHtml = `
+        const detailsHtml = `
                     <div class="detail-row">
                         <div class="detail-label">Factura ID</div>
                         <div><strong>${invoice.factura_id}</strong></div>
@@ -81,118 +80,250 @@ async function createInvoiceForTicket(ticketId) {
                             </tbody>
                         </table>
                     </div>
-                    <div style="margin-top: 2rem; text-align: right;">
-                        <div style="font-size: 1.1rem;"><strong>Subtotal:</strong> ${invoice.subtotal.toFixed(2)} €</div>
-                        <div style="font-size: 1.1rem;"><strong>IVA:</strong> ${invoice.iva.toFixed(2)} €</div>
-                        <div style="font-size: 1.5rem; font-weight: bold; margin-top: 0.5rem;">Total: ${invoice.total.toFixed(2)} €</div>
+                    <div style="margin-top: 2rem; display: flex; justify-content: space-between; align-items: flex-end;">
+                        <div class="verifactu-container" style="${invoice.hash ? '' : 'display: none;'}">
+                            <div class="verifactu-badge">
+                                <i class="fas fa-check-circle"></i> VERI*FACTU
+                            </div>
+                            <img src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(`https://www2.agenciatributaria.gob.es/wlpl/TIKE-CONT/v1/qr/v1/verificar?id=${invoice.factura_id}&hash=${invoice.hash}&total=${invoice.total}`)}" alt="QR Veri*Factu" class="verifactu-qr">
+                            <div class="verifactu-footer">
+                                Factura verificable en la sede electrónica de la AEAT
+                            </div>
+                        </div>
+                        <div style="text-align: right; flex: 1;">
+                            <div style="font-size: 1.1rem;"><strong>Subtotal:</strong> ${invoice.subtotal.toFixed(2)} €</div>
+                            <div style="font-size: 1.1rem;"><strong>IVA:</strong> ${invoice.iva.toFixed(2)} €</div>
+                            <div style="font-size: 1.5rem; font-weight: bold; margin-top: 0.5rem;">Total: ${invoice.total.toFixed(2)} €</div>
+                        </div>
                     </div>
                 `;
 
-                document.getElementById('invoiceDetails').innerHTML = detailsHtml;
-                document.getElementById('invoiceModal').classList.add('active');
+        document.getElementById('invoiceDetails').innerHTML = detailsHtml;
+        document.getElementById('invoiceModal').classList.add('active');
 
-            } catch (error) {
-                console.error('Error viewing invoice:', error);
-                alert('Error al ver la factura: ' + error.message);
-            }
+    } catch (error) {
+        console.error('Error viewing invoice:', error);
+        showNotification('Error al ver la factura: ' + error.message, 'error');
+    }
+}
+
+function closeInvoiceModal() {
+    document.getElementById('invoiceModal').classList.remove('active');
+}
+// ==================== MODERN NOTIFICATION SYSTEM ====================
+
+// Create notification container on page load
+document.addEventListener('DOMContentLoaded', () => {
+    if (!document.getElementById('notificationContainer')) {
+        const container = document.createElement('div');
+        container.id = 'notificationContainer';
+        container.className = 'notification-container';
+        document.body.appendChild(container);
+    }
+});
+
+/**
+ * Show a modern notification
+ * @param {string} message - The message to display
+ * @param {string} type - Type: 'success', 'error', 'warning', 'info'
+ * @param {number} duration - Duration in ms (0 = manual close only)
+ * @param {string} title - Optional title
+ */
+function showNotification(message, type = 'info', duration = 5000, title = '') {
+    const container = document.getElementById('notificationContainer') || (() => {
+        const c = document.createElement('div');
+        c.id = 'notificationContainer';
+        c.className = 'notification-container';
+        document.body.appendChild(c);
+        return c;
+    })();
+
+    const icons = {
+        success: 'fa-check-circle',
+        error: 'fa-exclamation-circle',
+        warning: 'fa-exclamation-triangle',
+        info: 'fa-info-circle'
+    };
+
+    const titles = {
+        success: title || 'Éxito',
+        error: title || 'Error',
+        warning: title || 'Advertencia',
+        info: title || 'Información'
+    };
+
+    const notification = document.createElement('div');
+    notification.className = `notification ${type}`;
+    notification.innerHTML = `
+        <div class="notification-icon">
+            <i class="fas ${icons[type]}"></i>
+        </div>
+        <div class="notification-content">
+            <div class="notification-title">${titles[type]}</div>
+            <div class="notification-message">${message}</div>
+        </div>
+        <button class="notification-close" onclick="this.parentElement.remove()">
+            <i class="fas fa-times"></i>
+        </button>
+    `;
+
+    container.appendChild(notification);
+
+    // Auto-remove after duration (only if duration is greater than 0)
+    if (duration !== 0 && duration > 0) {
+        setTimeout(() => {
+            notification.classList.add('hiding');
+            setTimeout(() => notification.remove(), 300);
+        }, duration);
+    }
+
+    return notification;
+}
+
+// ==================== END NOTIFICATION SYSTEM ====================
+
+/**
+ * Show a custom modern confirmation dialog
+ * @param {string} message - The message to display
+ * @param {string} title - The title of the dialog
+ * @returns {Promise<boolean>} - Resolves to true if OK, false if Cancel
+ */
+function showConfirm(message, title = 'Confirmar Acción') {
+    return new Promise((resolve) => {
+        let overlay = document.getElementById('confirmOverlay');
+        if (!overlay) {
+            overlay = document.createElement('div');
+            overlay.id = 'confirmOverlay';
+            overlay.className = 'confirm-overlay';
+            overlay.innerHTML = `
+                <div class="confirm-modal">
+                    <div class="confirm-title" id="confirmTitle"></div>
+                    <div class="confirm-message" id="confirmMessage"></div>
+                    <div class="confirm-buttons">
+                        <button class="confirm-btn confirm-btn-cancel" id="confirmCancelBtn">Cancelar</button>
+                        <button class="confirm-btn confirm-btn-ok" id="confirmOkBtn">Confirmar</button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(overlay);
         }
 
-        function closeInvoiceModal() {
-            document.getElementById('invoiceModal').classList.remove('active');
-        }
+        document.getElementById('confirmTitle').textContent = title;
+        document.getElementById('confirmMessage').textContent = message;
+
+        const okBtn = document.getElementById('confirmOkBtn');
+        const cancelBtn = document.getElementById('confirmCancelBtn');
+
+        const cleanup = (result) => {
+            overlay.classList.remove('active');
+            okBtn.removeEventListener('click', onOk);
+            cancelBtn.removeEventListener('click', onCancel);
+            setTimeout(() => resolve(result), 200);
+        };
+
+        const onOk = () => cleanup(true);
+        const onCancel = () => cleanup(false);
+
+        okBtn.addEventListener('click', onOk);
+        cancelBtn.addEventListener('click', onCancel);
+
+        overlay.classList.add('active');
+    });
+}
+
 let csrfToken = '';
 
-        // Fetch CSRF token
-        async function fetchCsrfToken() {
-            try {
-                const response = await fetch('/api/csrf-token');
-                const data = await response.json();
-                csrfToken = data.csrfToken;
-            } catch (error) {
-                console.error('Error fetching CSRF token:', error);
-            }
-        }
+// Fetch CSRF token
+async function fetchCsrfToken() {
+    try {
+        const response = await fetch('/api/csrf-token');
+        const data = await response.json();
+        csrfToken = data.csrfToken;
+    } catch (error) {
+        console.error('Error fetching CSRF token:', error);
+    }
+}
 let allTickets = [];
-        let filteredTickets = [];
-        let currentFilter = 'todos';
-        let currentServicioFilter = 'todos';
-        let currentPrioridadFilter = 'todos';
+let filteredTickets = [];
+let currentFilter = 'todos';
+let currentServicioFilter = 'todos';
+let currentPrioridadFilter = 'todos';
 
-        let currentUserRole = null;
-        let isAdmin = false;
+let currentUserRole = null;
+let isAdmin = false;
 
-        // Load tickets on page load (ensure CSRF token and session are ready first)
-        document.addEventListener('DOMContentLoaded', async () => {
-            await fetchCsrfToken();
-            await checkUserRole();
-            await loadServices(); // To populate dropdowns
-            await loadEmpresas(); // To populate empresas dropdowns
-            await loadTickets();
-            setupEventListeners();
-        });
+// Load tickets on page load (ensure CSRF token and session are ready first)
+document.addEventListener('DOMContentLoaded', async () => {
+    await fetchCsrfToken();
+    await checkUserRole();
+    await loadServices(); // To populate dropdowns
+    await loadEmpresas(); // To populate empresas dropdowns
+    await loadTickets();
+    setupEventListeners();
+});
 
-        // Check current user role
-        async function checkUserRole() {
-            try {
-                const response = await fetch('/api/session');
-                const session = await response.json();
-                
-                currentUserRole = session.rol;
-                isAdmin = session.isAdmin;
-                
-                applyPermissions();
-            } catch (error) {
-                console.error('Error checking user role:', error);
-            }
+// Check current user role
+async function checkUserRole() {
+    try {
+        const response = await fetch('/api/session');
+        const session = await response.json();
+
+        currentUserRole = session.rol;
+        isAdmin = session.isAdmin;
+
+        applyPermissions();
+    } catch (error) {
+        console.error('Error checking user role:', error);
+    }
+}
+
+// Apply permissions based on user role
+function applyPermissions() {
+    if (!isAdmin) {
+        // Ocultar botones de admin
+        const archivedBtn = document.querySelector('button[onclick*="loadArchivedTickets"]');
+        if (archivedBtn) {
+            archivedBtn.style.display = 'none';
         }
 
-        // Apply permissions based on user role
-        function applyPermissions() {
-            if (!isAdmin) {
-                // Ocultar botones de admin
-                const archivedBtn = document.querySelector('button[onclick*="loadArchivedTickets"]');
-                if (archivedBtn) {
-                    archivedBtn.style.display = 'none';
-                }
-                
-                // Ocultar todos los botones de delete
-                document.querySelectorAll('.btn-delete').forEach(btn => btn.style.display = 'none');
-                document.querySelectorAll('.btn-delete-note').forEach(btn => btn.style.display = 'none');
-                
-                // Ocultar botones en la tabla de usuarios
-                document.querySelectorAll('button[onclick*="deleteUser"]').forEach(btn => btn.style.display = 'none');
-                document.querySelectorAll('button[onclick*="editUser"]').forEach(btn => btn.style.display = 'none');
-                document.querySelectorAll('button[onclick*="deleteService"]').forEach(btn => btn.style.display = 'none');
-                document.querySelectorAll('button[onclick*="editService"]').forEach(btn => btn.style.display = 'none');
-            }
+        // Ocultar todos los botones de delete
+        document.querySelectorAll('.btn-delete').forEach(btn => btn.style.display = 'none');
+        document.querySelectorAll('.btn-delete-note').forEach(btn => btn.style.display = 'none');
+
+        // Ocultar botones en la tabla de usuarios
+        document.querySelectorAll('button[onclick*="deleteUser"]').forEach(btn => btn.style.display = 'none');
+        document.querySelectorAll('button[onclick*="editUser"]').forEach(btn => btn.style.display = 'none');
+        document.querySelectorAll('button[onclick*="deleteService"]').forEach(btn => btn.style.display = 'none');
+        document.querySelectorAll('button[onclick*="editService"]').forEach(btn => btn.style.display = 'none');
+    }
+}
+
+// ==================== USERS PANEL ====================
+function toggleUsersPanel() {
+    const panel = document.getElementById('usersPanel');
+    const isVisible = panel.style.display === 'block';
+    panel.style.display = isVisible ? 'none' : 'block';
+    if (!isVisible) {
+        loadUsers();
+    }
+}
+
+async function loadUsers() {
+    const tableBody = document.getElementById('usersTableBody');
+    tableBody.innerHTML = '<tr><td colspan="7" style="text-align: center;">Cargando...</td></tr>';
+
+    try {
+        const response = await fetch('/api/usuarios');
+        if (!response.ok) throw new Error('No se pudieron cargar los usuarios.');
+
+        const users = await response.json();
+
+        if (users.length === 0) {
+            tableBody.innerHTML = '<tr><td colspan="7" style="text-align: center;">No hay usuarios.</td></tr>';
+            return;
         }
 
-        // ==================== USERS PANEL ====================
-        function toggleUsersPanel() {
-            const panel = document.getElementById('usersPanel');
-            const isVisible = panel.style.display === 'block';
-            panel.style.display = isVisible ? 'none' : 'block';
-            if (!isVisible) {
-                loadUsers();
-            }
-        }
-
-        async function loadUsers() {
-            const tableBody = document.getElementById('usersTableBody');
-            tableBody.innerHTML = '<tr><td colspan="7" style="text-align: center;">Cargando...</td></tr>';
-            
-            try {
-                const response = await fetch('/api/usuarios');
-                if (!response.ok) throw new Error('No se pudieron cargar los usuarios.');
-                
-                const users = await response.json();
-                
-                if (users.length === 0) {
-                    tableBody.innerHTML = '<tr><td colspan="7" style="text-align: center;">No hay usuarios.</td></tr>';
-                    return;
-                }
-
-                tableBody.innerHTML = users.map(user => `
+        tableBody.innerHTML = users.map(user => `
                     <tr>
                         <td>${user.username}</td>
                         <td>${user.nombre_completo || '-'}</td>
@@ -202,154 +333,91 @@ let allTickets = [];
                         <td>${user.ultimo_acceso ? new Date(user.ultimo_acceso).toLocaleString('es-ES') : 'Nunca'}</td>
                         <td class="user-actions">
                             <button class="btn-icon btn-edit" onclick='editUser(${JSON.stringify(user)})'><i class="fas fa-edit"></i></button>
-                        } catch (error) {
                         </td>
                     </tr>
                 `).join('');
-                
-                applyPermissions();
 
-            } catch (error) {
-                console.error('Error loading users:', error);
-                tableBody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: red;">${error.message}</td></tr>`;
+        applyPermissions();
+
+    } catch (error) {
+        console.error('Error loading users:', error);
+        tableBody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: red;">${error.message}</td></tr>`;
+    }
+}
+
+function showUserForm() {
+    document.getElementById('userForm').reset();
+    document.getElementById('userId').value = '';
+    document.getElementById('formTitle').textContent = 'Nuevo Usuario';
+    document.getElementById('userFormContainer').style.display = 'block';
+    document.getElementById('password').setAttribute('required', 'required');
+}
+
+function cancelUserForm() {
+    document.getElementById('userFormContainer').style.display = 'none';
+    document.getElementById('userForm').reset();
+}
+
+function editUser(user) {
+    cancelUserForm(); // Reset form first
+    document.getElementById('userId').value = user.id;
+    document.getElementById('username').value = user.username;
+    document.getElementById('nombreCompleto').value = user.nombre_completo || '';
+    document.getElementById('email').value = user.email || '';
+    document.getElementById('rol').value = user.rol;
+    document.getElementById('activo').value = user.activo ? '1' : '0';
+    document.getElementById('formTitle').textContent = 'Editar Usuario';
+    document.getElementById('password').removeAttribute('required');
+    document.getElementById('userFormContainer').style.display = 'block';
+}
+
+
+// ==================== SERVICES PANEL ====================
+
+function toggleServicesPanel() {
+    const panel = document.getElementById('servicesPanel');
+    const isVisible = panel.style.display === 'block';
+    panel.style.display = isVisible ? 'none' : 'block';
+    if (!isVisible) {
+        loadServices();
+    }
+}
+
+async function loadServices() {
+    const tableBody = document.getElementById('servicesTableBody');
+    tableBody.innerHTML = '<tr><td colspan="5" style="text-align: center;">Cargando...</td></tr>';
+
+    try {
+        const response = await fetch('/api/servicios');
+        if (!response.ok) throw new Error('No se pudieron cargar los servicios.');
+
+        const services = await response.json();
+
+        // Populate dropdowns
+        const serviceDropdowns = [
+            document.getElementById('filterServicio'),
+            document.getElementById('editTicketServicio'),
+            document.getElementById('createTicketServicio')
+        ];
+
+        serviceDropdowns.forEach(dropdown => {
+            // Clear existing options except the first one ('Todos')
+            while (dropdown.options.length > 1) {
+                dropdown.remove(1);
             }
-        }
-
-        function showUserForm() {
-            document.getElementById('userForm').reset();
-            document.getElementById('userId').value = '';
-            document.getElementById('formTitle').textContent = 'Nuevo Usuario';
-            document.getElementById('userFormContainer').style.display = 'block';
-            document.getElementById('password').setAttribute('required', 'required');
-        }
-
-        function cancelUserForm() {
-            document.getElementById('userFormContainer').style.display = 'none';
-            document.getElementById('userForm').reset();
-        }
-
-        function editUser(user) {
-            cancelUserForm(); // Reset form first
-            document.getElementById('userId').value = user.id;
-            document.getElementById('username').value = user.username;
-            document.getElementById('nombreCompleto').value = user.nombre_completo || '';
-            document.getElementById('email').value = user.email || '';
-            document.getElementById('rol').value = user.rol;
-            document.getElementById('activo').value = user.activo ? '1' : '0';
-            document.getElementById('formTitle').textContent = 'Editar Usuario';
-            document.getElementById('password').removeAttribute('required');
-            document.getElementById('userFormContainer').style.display = 'block';
-        }
-
-        async function saveUser(event) {
-            event.preventDefault();
-            const userId = document.getElementById('userId').value;
-            const url = userId ? `/api/usuarios/${userId}` : '/api/usuarios';
-            const method = userId ? 'PUT' : 'POST';
-
-            const userData = {
-                username: document.getElementById('username').value,
-                nombre_completo: document.getElementById('nombreCompleto').value,
-                email: document.getElementById('email').value,
-                rol: document.getElementById('rol').value,
-                activo: document.getElementById('activo').value,
-                _csrf: csrfToken
-            };
-
-            const password = document.getElementById('password').value;
-            if (password) {
-                userData.password = password;
-            }
-
-            if (!userId && !password) {
-                alert('La contraseña es obligatoria para nuevos usuarios.');
-                return;
-            }
-
-            try {
-                const response = await fetch(url, {
-                    method: method,
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(userData)
-                });
-
-                const result = await response.json();
-                if (!response.ok) throw new Error(result.error);
-
-                alert(`Usuario ${userId ? 'actualizado' : 'creado'} exitosamente.`);
-                cancelUserForm();
-                loadUsers();
-
-            } catch (error) {
-                console.error('Error saving user:', error);
-                alert('Error al guardar usuario: ' + error.message);
-            }
-        }
-        
-        async function deleteUser(id) {
-            if (!confirm('¿Está seguro de que desea eliminar este usuario? Esta acción no se puede deshacer.')) {
-                return;
-            }
-            try {
-                const response = await fetch(`/api/usuarios/${id}`, { method: 'DELETE', headers: { 'csrf-token': csrfToken } });
-                const result = await response.json();
-                if (!response.ok) throw new Error(result.error);
-                
-                alert('Usuario eliminado exitosamente.');
-                loadUsers();
-
-            } catch (error) {
-                console.error('Error deleting user:', error);
-                alert('Error al eliminar usuario: ' + error.message);
-            }
-        }
-
-        // ==================== SERVICES PANEL ====================
-
-        function toggleServicesPanel() {
-            const panel = document.getElementById('servicesPanel');
-            const isVisible = panel.style.display === 'block';
-            panel.style.display = isVisible ? 'none' : 'block';
-            if (!isVisible) {
-                loadServices();
-            }
-        }
-
-        async function loadServices() {
-            const tableBody = document.getElementById('servicesTableBody');
-            tableBody.innerHTML = '<tr><td colspan="5" style="text-align: center;">Cargando...</td></tr>';
-            
-            try {
-                const response = await fetch('/api/servicios');
-                if (!response.ok) throw new Error('No se pudieron cargar los servicios.');
-                
-                const services = await response.json();
-
-                // Populate dropdowns
-                const serviceDropdowns = [
-                    document.getElementById('filterServicio'),
-                    document.getElementById('editTicketServicio'),
-                    document.getElementById('createTicketServicio')
-                ];
-
-                serviceDropdowns.forEach(dropdown => {
-                    // Clear existing options except the first one ('Todos')
-                    while (dropdown.options.length > 1) {
-                        dropdown.remove(1);
-                    }
-                    services.forEach(service => {
-                        if (service.activo) {
-                            dropdown.add(new Option(service.nombre, service.codigo));
-                        }
-                    });
-                });
-                
-                if (services.length === 0) {
-                    tableBody.innerHTML = '<tr><td colspan="5" style="text-align: center;">No hay servicios definidos.</td></tr>';
-                    return;
+            services.forEach(service => {
+                if (service.activo) {
+                    dropdown.add(new Option(service.nombre, service.codigo));
                 }
+            });
+        });
 
-                tableBody.innerHTML = services.map(service => `
+        if (services.length === 0) {
+            tableBody.innerHTML = '<tr><td colspan="5" style="text-align: center;">No hay servicios definidos.</td></tr>';
+            return;
+        }
+
+        tableBody.innerHTML = services.map(service => `
                     <tr>
                         <td>${service.codigo}</td>
                         <td>${service.nombre}</td>
@@ -361,117 +429,116 @@ let allTickets = [];
                         </td>
                     </tr>
                 `).join('');
-                
-                applyPermissions();
 
-            } catch (error) {
-                console.error('Error loading services:', error);
-                tableBody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: red;">${error.message}</td></tr>`;
-            }
+        applyPermissions();
+
+    } catch (error) {
+        console.error('Error loading services:', error);
+        tableBody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: red;">${error.message}</td></tr>`;
+    }
+}
+
+function showServiceForm() {
+    document.getElementById('serviceForm').reset();
+    document.getElementById('serviceId').value = '';
+    document.getElementById('serviceFormTitle').textContent = 'Nuevo Servicio';
+    document.getElementById('serviceFormContainer').style.display = 'block';
+}
+
+function cancelServiceForm() {
+    document.getElementById('serviceFormContainer').style.display = 'none';
+    document.getElementById('serviceForm').reset();
+}
+
+function editService(service) {
+    cancelServiceForm();
+    document.getElementById('serviceId').value = service.id;
+    document.getElementById('serviceCode').value = service.codigo;
+    document.getElementById('serviceName').value = service.nombre;
+    document.getElementById('serviceDescription').value = service.descripcion || '';
+    document.getElementById('serviceActive').value = service.activo ? '1' : '0';
+    document.getElementById('serviceFormTitle').textContent = 'Editar Servicio';
+    document.getElementById('serviceFormContainer').style.display = 'block';
+}
+
+async function saveService(event) {
+    event.preventDefault();
+    const serviceId = document.getElementById('serviceId').value;
+    const url = serviceId ? `/api/servicios/${serviceId}` : '/api/servicios';
+    const method = serviceId ? 'PUT' : 'POST';
+
+    const serviceData = {
+        codigo: document.getElementById('serviceCode').value,
+        nombre: document.getElementById('serviceName').value,
+        descripcion: document.getElementById('serviceDescription').value,
+        activo: document.getElementById('serviceActive').value,
+        _csrf: csrfToken
+    };
+
+    try {
+        const response = await fetch(url, {
+            method: method,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(serviceData)
+        });
+
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error);
+
+        showNotification(`Servicio ${serviceId ? 'actualizado' : 'creado'} exitosamente.`, 'success');
+        cancelServiceForm();
+        loadServices();
+
+    } catch (error) {
+        console.error('Error saving service:', error);
+        showNotification('Error al guardar servicio: ' + error.message, 'error');
+    }
+}
+
+async function deleteService(id) {
+    const userConfirmed = await showConfirm('¿Está seguro de que desea eliminar este servicio?', 'Eliminar Servicio');
+    if (!userConfirmed) return;
+    try {
+        const response = await fetch(`/api/servicios/${id}`, { method: 'DELETE', headers: { 'csrf-token': csrfToken } });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error);
+
+        showNotification('Servicio eliminado exitosamente.', 'success');
+        loadServices();
+
+    } catch (error) {
+        console.error('Error deleting service:', error);
+        showNotification('Error al eliminar servicio: ' + error.message, 'error');
+    }
+}
+
+// ==================== MATERIALS PANEL ====================
+
+function toggleMaterialsPanel() {
+    const panel = document.getElementById('materialsPanel');
+    const isVisible = panel.style.display === 'block';
+    panel.style.display = isVisible ? 'none' : 'block';
+    if (!isVisible) {
+        loadMaterials();
+    }
+}
+
+async function loadMaterials() {
+    const tableBody = document.getElementById('materialsTableBody');
+    tableBody.innerHTML = '<tr><td colspan="5" style="text-align: center;">Cargando...</td></tr>';
+
+    try {
+        const response = await fetch('/api/materiales');
+        if (!response.ok) throw new Error('No se pudieron cargar los materiales.');
+
+        const materials = await response.json();
+
+        if (materials.length === 0) {
+            tableBody.innerHTML = '<tr><td colspan="5" style="text-align: center;">No hay materiales definidos.</td></tr>';
+            return;
         }
 
-        function showServiceForm() {
-            document.getElementById('serviceForm').reset();
-            document.getElementById('serviceId').value = '';
-            document.getElementById('serviceFormTitle').textContent = 'Nuevo Servicio';
-            document.getElementById('serviceFormContainer').style.display = 'block';
-        }
-
-        function cancelServiceForm() {
-            document.getElementById('serviceFormContainer').style.display = 'none';
-            document.getElementById('serviceForm').reset();
-        }
-
-        function editService(service) {
-            cancelServiceForm();
-            document.getElementById('serviceId').value = service.id;
-            document.getElementById('serviceCode').value = service.codigo;
-            document.getElementById('serviceName').value = service.nombre;
-            document.getElementById('serviceDescription').value = service.descripcion || '';
-            document.getElementById('serviceActive').value = service.activo ? '1' : '0';
-            document.getElementById('serviceFormTitle').textContent = 'Editar Servicio';
-            document.getElementById('serviceFormContainer').style.display = 'block';
-        }
-
-        async function saveService(event) {
-            event.preventDefault();
-            const serviceId = document.getElementById('serviceId').value;
-            const url = serviceId ? `/api/servicios/${serviceId}` : '/api/servicios';
-            const method = serviceId ? 'PUT' : 'POST';
-
-            const serviceData = {
-                codigo: document.getElementById('serviceCode').value,
-                nombre: document.getElementById('serviceName').value,
-                descripcion: document.getElementById('serviceDescription').value,
-                activo: document.getElementById('serviceActive').value,
-                _csrf: csrfToken
-            };
-
-            try {
-                const response = await fetch(url, {
-                    method: method,
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(serviceData)
-                });
-
-                const result = await response.json();
-                if (!response.ok) throw new Error(result.error);
-
-                alert(`Servicio ${serviceId ? 'actualizado' : 'creado'} exitosamente.`);
-                cancelServiceForm();
-                loadServices();
-
-            } catch (error) {
-                console.error('Error saving service:', error);
-                alert('Error al guardar servicio: ' + error.message);
-            }
-        }
-
-        async function deleteService(id) {
-            if (!confirm('¿Está seguro de que desea eliminar este servicio?')) {
-                return;
-            }
-            try {
-                const response = await fetch(`/api/servicios/${id}`, { method: 'DELETE', headers: { 'csrf-token': csrfToken } });
-                const result = await response.json();
-                if (!response.ok) throw new Error(result.error);
-                
-                alert('Servicio eliminado exitosamente.');
-                loadServices();
-
-            } catch (error) {
-                console.error('Error deleting service:', error);
-                alert('Error al eliminar servicio: ' + error.message);
-            }
-        }
-
-        // ==================== MATERIALS PANEL ====================
-
-        function toggleMaterialsPanel() {
-            const panel = document.getElementById('materialsPanel');
-            const isVisible = panel.style.display === 'block';
-            panel.style.display = isVisible ? 'none' : 'block';
-            if (!isVisible) {
-                loadMaterials();
-            }
-        }
-
-        async function loadMaterials() {
-            const tableBody = document.getElementById('materialsTableBody');
-            tableBody.innerHTML = '<tr><td colspan="5" style="text-align: center;">Cargando...</td></tr>';
-            
-            try {
-                const response = await fetch('/api/materiales');
-                if (!response.ok) throw new Error('No se pudieron cargar los materiales.');
-                
-                const materials = await response.json();
-                
-                if (materials.length === 0) {
-                    tableBody.innerHTML = '<tr><td colspan="5" style="text-align: center;">No hay materiales definidos.</td></tr>';
-                    return;
-                }
-
-                tableBody.innerHTML = materials.map(material => `
+        tableBody.innerHTML = materials.map(material => `
                     <tr>
                         <td>${material.nombre}</td>
                         <td>${material.descripcion || '-'}</td>
@@ -483,599 +550,605 @@ let allTickets = [];
                         </td>
                     </tr>
                 `).join('');
-                
-                applyPermissions();
 
-            } catch (error) {
-                console.error('Error loading materials:', error);
-                tableBody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: red;">${error.message}</td></tr>`;
+        applyPermissions();
+
+    } catch (error) {
+        console.error('Error loading materials:', error);
+        tableBody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: red;">${error.message}</td></tr>`;
+    }
+}
+
+function showMaterialForm() {
+    document.getElementById('materialForm').reset();
+    document.getElementById('materialId').value = '';
+    document.getElementById('materialFormTitle').textContent = 'Nuevo Material';
+    document.getElementById('materialFormContainer').style.display = 'block';
+}
+
+function cancelMaterialForm() {
+    document.getElementById('materialFormContainer').style.display = 'none';
+    document.getElementById('materialForm').reset();
+}
+
+function editMaterial(material) {
+    cancelMaterialForm();
+    document.getElementById('materialId').value = material.id;
+    document.getElementById('materialName').value = material.nombre;
+    document.getElementById('materialDescription').value = material.descripcion || '';
+    document.getElementById('materialPrice').value = material.precio || 0;
+    document.getElementById('materialActive').value = material.activo ? '1' : '0';
+    document.getElementById('materialFormTitle').textContent = 'Editar Material';
+    document.getElementById('materialFormContainer').style.display = 'block';
+}
+
+async function saveMaterial(event) {
+    event.preventDefault();
+    const materialId = document.getElementById('materialId').value;
+    const url = materialId ? `/api/materiales/${materialId}` : '/api/materiales';
+    const method = materialId ? 'PUT' : 'POST';
+
+    const materialData = {
+        nombre: document.getElementById('materialName').value,
+        descripcion: document.getElementById('materialDescription').value,
+        precio: parseFloat(document.getElementById('materialPrice').value),
+        activo: document.getElementById('materialActive').value,
+        _csrf: csrfToken
+    };
+
+    try {
+        const response = await fetch(url, {
+            method: method,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(materialData)
+        });
+
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error);
+
+        showNotification(`Material ${materialId ? 'actualizado' : 'creado'} exitosamente.`, 'success');
+        cancelMaterialForm();
+        loadMaterials();
+
+    } catch (error) {
+        console.error('Error saving material:', error);
+        showNotification('Error al guardar material: ' + error.message, 'error');
+    }
+}
+
+async function deleteMaterial(id) {
+    const userConfirmed = await showConfirm('¿Está seguro de que desea eliminar este material? Si está en uso en algún ticket, no podrá ser eliminado.', 'Eliminar Material');
+    if (!userConfirmed) return;
+    try {
+        const response = await fetch(`/api/materiales/${id}`, { method: 'DELETE', headers: { 'csrf-token': csrfToken } });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error);
+
+        showNotification('Material eliminado exitosamente.', 'success');
+        loadMaterials();
+
+    } catch (error) {
+        console.error('Error deleting material:', error);
+        showNotification('Error al eliminar material: ' + error.message, 'error');
+    }
+}
+
+// ==================== EMPRESAS PANEL ====================
+
+function toggleEmpresasPanel() {
+    const panel = document.getElementById('empresasPanel');
+    const isVisible = panel.style.display === 'block';
+    panel.style.display = isVisible ? 'none' : 'block';
+    if (!isVisible) {
+        loadEmpresas();
+    }
+}
+
+async function loadEmpresas() {
+    const tableBody = document.getElementById('empresasTableBody');
+    tableBody.innerHTML = '<tr><td colspan="7" style="text-align: center;">Cargando...</td></tr>';
+
+    try {
+        const response = await fetch('/api/empresas');
+        if (!response.ok) throw new Error('No se pudieron cargar las empresas.');
+
+        const empresas = await response.json();
+
+        // Populate dropdowns
+        const empresaDropdowns = [
+            document.getElementById('editTicketEmpresa'),
+            document.getElementById('createTicketEmpresa')
+        ];
+
+        empresaDropdowns.forEach(dropdown => {
+            // Clear existing options except the first one ('Sin empresa')
+            while (dropdown.options.length > 1) {
+                dropdown.remove(1);
             }
-        }
-
-        function showMaterialForm() {
-            document.getElementById('materialForm').reset();
-            document.getElementById('materialId').value = '';
-            document.getElementById('materialFormTitle').textContent = 'Nuevo Material';
-            document.getElementById('materialFormContainer').style.display = 'block';
-        }
-
-        function cancelMaterialForm() {
-            document.getElementById('materialFormContainer').style.display = 'none';
-            document.getElementById('materialForm').reset();
-        }
-
-        function editMaterial(material) {
-            cancelMaterialForm();
-            document.getElementById('materialId').value = material.id;
-            document.getElementById('materialName').value = material.nombre;
-            document.getElementById('materialDescription').value = material.descripcion || '';
-            document.getElementById('materialPrice').value = material.precio || 0;
-            document.getElementById('materialActive').value = material.activo ? '1' : '0';
-            document.getElementById('materialFormTitle').textContent = 'Editar Material';
-            document.getElementById('materialFormContainer').style.display = 'block';
-        }
-
-        async function saveMaterial(event) {
-            event.preventDefault();
-            const materialId = document.getElementById('materialId').value;
-            const url = materialId ? `/api/materiales/${materialId}` : '/api/materiales';
-            const method = materialId ? 'PUT' : 'POST';
-
-            const materialData = {
-                nombre: document.getElementById('materialName').value,
-                descripcion: document.getElementById('materialDescription').value,
-                precio: parseFloat(document.getElementById('materialPrice').value),
-                activo: document.getElementById('materialActive').value,
-                _csrf: csrfToken
-            };
-
-            try {
-                const response = await fetch(url, {
-                    method: method,
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(materialData)
-                });
-
-                const result = await response.json();
-                if (!response.ok) throw new Error(result.error);
-
-                alert(`Material ${materialId ? 'actualizado' : 'creado'} exitosamente.`);
-                cancelMaterialForm();
-                loadMaterials();
-
-            } catch (error) {
-                console.error('Error saving material:', error);
-                alert('Error al guardar material: ' + error.message);
-            }
-        }
-
-        async function deleteMaterial(id) {
-            if (!confirm('¿Está seguro de que desea eliminar este material? Si está en uso en algún ticket, no podrá ser eliminado.')) {
-                return;
-            }
-            try {
-                const response = await fetch(`/api/materiales/${id}`, { method: 'DELETE', headers: { 'csrf-token': csrfToken } });
-                const result = await response.json();
-                if (!response.ok) throw new Error(result.error);
-                
-                alert('Material eliminado exitosamente.');
-                loadMaterials();
-
-            } catch (error) {
-                console.error('Error deleting material:', error);
-                alert('Error al eliminar material: ' + error.message);
-            }
-        }
-
-        // ==================== FACTURACIÓN PANEL ====================
-
-        function toggleFacturacionPanel() {
-            const panel = document.getElementById('facturacionPanel');
-            const isVisible = panel.style.display === 'block';
-            panel.style.display = isVisible ? 'none' : 'block';
-            if (!isVisible) {
-                showFacturacionForm();
-            }
-        }
-
-        async function showFacturacionForm() {
-            const content = document.getElementById('facturacionContent');
-            
-            // Load all active tickets
-            try {
-                const response = await fetch('/api/tickets');
-                const tickets = await response.json();
-                const activeTickets = tickets.filter(t => t.estado !== 'completado');
-
-                content.innerHTML = `
-                    <div style="background: #f9fafb; padding: 1.5rem; border-radius: 10px;">
-                        <h3 style="margin-bottom: 1rem;">Seleccionar Tickets para Facturación</h3>
-                        
-                        <div id="ticketsCheckboxList" style="max-height: 300px; overflow-y: auto; border: 1px solid #e5e7eb; border-radius: 8px; padding: 1rem; margin-bottom: 1.5rem;">
-                            ${activeTickets.map(ticket => `
-                                <label style="display: flex; align-items: center; padding: 0.5rem; cursor: pointer; border-radius: 5px; hover: background #f0f0f0;">
-                                    <input type="checkbox" class="ticket-checkbox" value="${ticket.ticket_id}" data-cliente="${ticket.nombre}" data-email="${ticket.email}">
-                                    <span style="margin-left: 0.5rem; flex: 1;">
-                                        <strong>${ticket.ticket_id}</strong> - ${ticket.nombre} (${ticket.email})
-                                    </span>
-                                </label>
-                            `).join('')}
-                        </div>
-
-                        <button onclick="generateInvoicePreview()" class="btn" style="background: #10b981; padding: 0.75rem 1.5rem; width: 100%; cursor: pointer;">
-                            <i class="fas fa-arrow-right"></i> Siguiente: Ver Detalles
-                        </button>
-                    </div>
-                `;
-            } catch (error) {
-                content.innerHTML = `<div style="color: red;">Error al cargar tickets: ${error.message}</div>`;
-            }
-        }
-
-        async function generateInvoicePreview() {
-            const checkboxes = document.querySelectorAll('.ticket-checkbox:checked');
-            const ticketIds = Array.from(checkboxes).map(cb => cb.value);
-            
-            if (ticketIds.length === 0) {
-                alert('Por favor selecciona al menos un ticket');
-                return;
-            }
-
-            try {
-                const response = await fetch('/api/invoices/tickets-summary', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'csrf-token': csrfToken
-                    },
-                    body: JSON.stringify({ ticket_ids: ticketIds })
-                });
-
-                const tickets = await response.json();
-                showInvoiceEditor(tickets, ticketIds);
-            } catch (error) {
-                alert('Error: ' + error.message);
-            }
-        }
-
-        function showInvoiceEditor(tickets, ticketIds) {
-            const content = document.getElementById('facturacionContent');
-            
-            let totalHoras = 0;
-            let totalMateriales = 0;
-            let htmlItems = '';
-
-            tickets.forEach(ticket => {
-                totalHoras += parseFloat(ticket.total_horas) || 0;
-                totalMateriales += parseFloat(ticket.total_materiales) || 0;
-                
-                htmlItems += `
-                    <tr style="border-bottom: 1px solid #e5e7eb;">
-                        <td style="padding: 0.75rem;">${ticket.ticket_id}</td>
-                        <td style="padding: 0.75rem;">${ticket.nombre}</td>
-                        <td style="padding: 0.75rem;">
-                            <input type="number" class="item-horas-oficiales" data-ticket="${ticket.ticket_id}" placeholder="0" style="width: 60px; padding: 0.3rem; border: 1px solid #ddd; border-radius: 4px;">
-                            <small style="color: #666;"> h. oficial</small>
-                        </td>
-                        <td style="padding: 0.75rem;">
-                            <input type="number" class="item-horas-ayudante" data-ticket="${ticket.ticket_id}" placeholder="0" style="width: 60px; padding: 0.3rem; border: 1px solid #ddd; border-radius: 4px;">
-                            <small style="color: #666;"> h. ayudante</small>
-                        </td>
-                        <td style="padding: 0.75rem;">
-                            <input type="number" class="item-precio-oficial" data-ticket="${ticket.ticket_id}" placeholder="0.00" style="width: 70px; padding: 0.3rem; border: 1px solid #ddd; border-radius: 4px;">
-                            <small style="color: #666;"> €/h</small>
-                        </td>
-                        <td style="padding: 0.75rem;">
-                            <input type="number" class="item-precio-ayudante" data-ticket="${ticket.ticket_id}" placeholder="0.00" style="width: 70px; padding: 0.3rem; border: 1px solid #ddd; border-radius: 4px;">
-                            <small style="color: #666;"> €/h</small>
-                        </td>
-                        <td style="padding: 0.75rem; text-align: right;">
-                            <span class="item-subtotal" data-ticket="${ticket.ticket_id}">0.00 €</span>
-                        </td>
-                    </tr>
-                `;
-            });
-
-            const firstTicket = tickets[0];
-            
-            content.innerHTML = `
-                <div style="background: #f9fafb; padding: 1.5rem; border-radius: 10px;">
-                    <h3 style="margin-bottom: 1rem;">Editor de Factura</h3>
-                    
-                    <form onsubmit="event.preventDefault(); procesarFactura('${ticketIds.join("','")}');">
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1.5rem;">
-                            <div>
-                                <label>Cliente</label>
-                                <input type="text" id="invoiceCliente" value="${firstTicket.nombre}" required style="width: 100%; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px;">
-                            </div>
-                            <div>
-                                <label>Email</label>
-                                <input type="email" id="invoiceEmail" value="${firstTicket.email}" required style="width: 100%; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px;">
-                            </div>
-                        </div>
-
-                        <div style="margin-bottom: 1.5rem;">
-                            <h4 style="margin-bottom: 1rem;">Detalles por Ticket</h4>
-                            <table style="width: 100%; border-collapse: collapse; font-size: 0.9rem;">
-                                <thead style="background: #e5e7eb;">
-                                    <tr>
-                                        <th style="padding: 0.75rem; text-align: left;">Ticket</th>
-                                        <th style="padding: 0.75rem; text-align: left;">Cliente</th>
-                                        <th style="padding: 0.75rem; text-align: left;">H. Oficial</th>
-                                        <th style="padding: 0.75rem; text-align: left;">H. Ayudante</th>
-                                        <th style="padding: 0.75rem; text-align: left;">€ Oficial</th>
-                                        <th style="padding: 0.75rem; text-align: left;">€ Ayudante</th>
-                                        <th style="padding: 0.75rem; text-align: right;">Subtotal</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="invoiceItemsBody">
-                                    ${htmlItems}
-                                </tbody>
-                            </table>
-                        </div>
-
-                        <div style="background: #f0f9ff; padding: 1rem; border-radius: 8px; margin-bottom: 1.5rem; border-left: 4px solid #3b82f6;">
-                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
-                                <div>
-                                    <p style="color: #666; font-size: 0.9rem;">Total Horas Detectadas</p>
-                                    <p style="font-size: 1.3rem; font-weight: bold;">${totalHoras.toFixed(2)} h</p>
-                                </div>
-                                <div>
-                                    <p style="color: #666; font-size: 0.9rem;">Total Materiales Detectados</p>
-                                    <p style="font-size: 1.3rem; font-weight: bold;">${totalMateriales.toFixed(2)} €</p>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div style="display: flex; gap: 1rem;">
-                            <button type="button" onclick="toggleFacturacionPanel()" class="btn" style="background: #6b7280; flex: 1; padding: 0.75rem;">Cancelar</button>
-                            <button type="submit" class="btn" style="background: #10b981; flex: 1; padding: 0.75rem;">
-                                <i class="fas fa-check"></i> Generar Factura
-                            </button>
-                        </div>
-                    </form>
-                </div>
-            `;
-
-            // Add event listeners for calculations
-            document.querySelectorAll('.item-horas-oficiales, .item-horas-ayudante, .item-precio-oficial, .item-precio-ayudante').forEach(input => {
-                input.addEventListener('change', recalcularSubtotal);
-            });
-        }
-
-        function recalcularSubtotal() {
-            document.querySelectorAll('.item-subtotal').forEach(elem => {
-                const ticketId = elem.dataset.ticket;
-                const horasOficial = parseFloat(document.querySelector(`.item-horas-oficiales[data-ticket="${ticketId}"]`).value) || 0;
-                const horasAyudante = parseFloat(document.querySelector(`.item-horas-ayudante[data-ticket="${ticketId}"]`).value) || 0;
-                const precioOficial = parseFloat(document.querySelector(`.item-precio-oficial[data-ticket="${ticketId}"]`).value) || 0;
-                const precioAyudante = parseFloat(document.querySelector(`.item-precio-ayudante[data-ticket="${ticketId}"]`).value) || 0;
-
-                const subtotal = (horasOficial * precioOficial) + (horasAyudante * precioAyudante);
-                elem.textContent = subtotal.toFixed(2) + ' €';
-            });
-        }
-
-        async function procesarFactura(ticketIds) {
-            const cliente = document.getElementById('invoiceCliente').value;
-            const email = document.getElementById('invoiceEmail').value;
-            
-            if (!cliente || !email) {
-                alert('Por favor completa los datos del cliente');
-                return;
-            }
-
-            const items = [];
-            document.querySelectorAll('.item-subtotal').forEach(elem => {
-                const ticketId = elem.dataset.ticket;
-                const horasOficial = parseFloat(document.querySelector(`.item-horas-oficiales[data-ticket="${ticketId}"]`).value) || 0;
-                const horasAyudante = parseFloat(document.querySelector(`.item-horas-ayudante[data-ticket="${ticketId}"]`).value) || 0;
-                const precioOficial = parseFloat(document.querySelector(`.item-precio-oficial[data-ticket="${ticketId}"]`).value) || 0;
-                const precioAyudante = parseFloat(document.querySelector(`.item-precio-ayudante[data-ticket="${ticketId}"]`).value) || 0;
-
-                const subtotal = (horasOficial * precioOficial) + (horasAyudante * precioAyudante);
-                
-                if (horasOficial > 0 || horasAyudante > 0) {
-                    items.push({
-                        concepto: 'Servicios profesionales',
-                        descripcion: `${ticketId} - Oficial: ${horasOficial}h, Ayudante: ${horasAyudante}h`,
-                        cantidad: 1,
-                        precio_unitario: subtotal,
-                        total: subtotal
-                    });
+            empresas.forEach(empresa => {
+                if (empresa.activo) {
+                    dropdown.add(new Option(empresa.nombre, empresa.id));
                 }
             });
+        });
 
-            if (items.length === 0) {
-                alert('Por favor ingresa al menos una línea de factura');
-                return;
-            }
-
-            try {
-                const response = await fetch('/api/invoices/multi-ticket', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'csrf-token': csrfToken
-                    },
-                    body: JSON.stringify({
-                        ticket_ids: ticketIds.split(','),
-                        cliente_nombre: cliente,
-                        cliente_email: email,
-                        fecha_vencimiento: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-                        items: items,
-                        empresa_id: null
-                    })
-                });
-
-                const result = await response.json();
-                
-                if (response.ok) {
-                    alert(`Factura ${result.invoiceId} creada exitosamente con ${result.ticketCount} ticket(s)`);
-                    toggleFacturacionPanel();
-                    loadTickets();
-                } else {
-                    alert('Error: ' + (result.error || 'Error desconocido'));
-                }
-            } catch (error) {
-                console.error('Error:', error);
-                alert('Error al procesar factura: ' + error.message);
-            }
+        if (empresas.length === 0) {
+            tableBody.innerHTML = '<tr><td colspan="7" style="text-align: center;">No hay empresas definidas.</td></tr>';
+            return;
         }
 
-        // ==================== EMPRESAS PANEL ====================
 
-        function toggleEmpresasPanel() {
-            const panel = document.getElementById('empresasPanel');
-            const isVisible = panel.style.display === 'block';
-            panel.style.display = isVisible ? 'none' : 'block';
-            if (!isVisible) {
-                loadEmpresas();
-            }
-        }
-
-        async function loadEmpresas() {
-            const tableBody = document.getElementById('empresasTableBody');
-            tableBody.innerHTML = '<tr><td colspan="7" style="text-align: center;">Cargando...</td></tr>';
-            
-            try {
-                const response = await fetch('/api/empresas');
-                if (!response.ok) throw new Error('No se pudieron cargar las empresas.');
-                
-                const empresas = await response.json();
-                
-                // Populate dropdowns
-                const empresaDropdowns = [
-                    document.getElementById('editTicketEmpresa'),
-                    document.getElementById('createTicketEmpresa')
-                ];
-
-                empresaDropdowns.forEach(dropdown => {
-                    // Clear existing options except the first one ('Sin empresa')
-                    while (dropdown.options.length > 1) {
-                        dropdown.remove(1);
-                    }
-                    empresas.forEach(empresa => {
-                        if (empresa.activo) {
-                            dropdown.add(new Option(empresa.nombre, empresa.id));
-                        }
-                    });
-                });
-                
-                if (empresas.length === 0) {
-                    tableBody.innerHTML = '<tr><td colspan="7" style="text-align: center;">No hay empresas definidas.</td></tr>';
-                    return;
-                }
-
-                tableBody.innerHTML = empresas.map(empresa => `
+        tableBody.innerHTML = empresas.map(empresa => `
                     <tr>
                         <td>${empresa.nombre}</td>
                         <td>${empresa.cif || '-'}</td>
                         <td>${empresa.direccion || '-'}</td>
                         <td>${empresa.telefono || '-'}</td>
                         <td>${empresa.email || '-'}</td>
-                        <td><span class="badge ${empresa.activo ? 'badge-active' : 'badge-inactive'}">${empresa.activo ? 'Activa' : 'Inactiva'}</span></td>
+                        <td>
+                            <span class="badge ${empresa.activo ? 'badge-active' : 'badge-inactive'}">${empresa.activo ? 'Activa' : 'Inactiva'}</span>
+                            <br>
+                            <span class="badge ${empresa.verifactu ? 'badge-active' : 'badge-inactive'}" style="margin-top: 5px; font-size: 0.7rem;">
+                                <i class="fas ${empresa.verifactu ? 'fa-check-circle' : 'fa-times-circle'}"></i> Veri*Factu
+                            </span>
+                        </td>
                         <td class="user-actions">
                             <button class="btn-icon btn-edit" onclick='editEmpresa(${JSON.stringify(empresa)})'><i class="fas fa-edit"></i></button>
                             <button class="btn-icon btn-delete" onclick="deleteEmpresa(${empresa.id})"><i class="fas fa-trash"></i></button>
                         </td>
                     </tr>
                 `).join('');
+
+        applyPermissions();
+
+    } catch (error) {
+        console.error('Error loading empresas:', error);
+        tableBody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: red;">${error.message}</td></tr>`;
+    }
+}
+
+// ==================== FACTURACIÓN PANEL ====================
+
+function toggleFacturacionPanel() {
+    const panel = document.getElementById('facturacionPanel');
+    const isVisible = panel.style.display === 'block';
+    panel.style.display = isVisible ? 'none' : 'block';
+    if (!isVisible) {
+        showFacturacionForm();
+    }
+}
+
+async function showFacturacionForm() {
+    const content = document.getElementById('facturacionContent');
+
+    // Load all active tickets
+    try {
+        const response = await fetch('/api/tickets');
+        const tickets = await response.json();
+        const activeTickets = tickets.filter(t => t.estado !== 'completado');
+
+        content.innerHTML = `
+            <div style="background: #f9fafb; padding: 1.5rem; border-radius: 10px;">
+                <h3 style="margin-bottom: 1rem;">Seleccionar Tickets para Facturación</h3>
                 
-                applyPermissions();
+                <div id="ticketsCheckboxList" style="max-height: 300px; overflow-y: auto; border: 1px solid #e5e7eb; border-radius: 8px; padding: 1rem; margin-bottom: 1.5rem;">
+                    ${activeTickets.map(ticket => `
+                        <label style="display: flex; align-items: center; padding: 0.5rem; cursor: pointer; border-radius: 5px; hover: background #f0f0f0;">
+                            <input type="checkbox" class="ticket-checkbox" value="${ticket.ticket_id}" data-cliente="${ticket.nombre}" data-email="${ticket.email}">
+                            <span style="margin-left: 0.5rem; flex: 1;">
+                                <strong>${ticket.ticket_id}</strong> - ${ticket.nombre} (${ticket.email})
+                            </span>
+                        </label>
+                    `).join('')}
+                </div>
 
-            } catch (error) {
-                console.error('Error loading empresas:', error);
-                tableBody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: red;">${error.message}</td></tr>`;
-            }
-        }
+                <button onclick="generateInvoicePreview()" class="btn" style="background: #10b981; padding: 0.75rem 1.5rem; width: 100%; cursor: pointer;">
+                    <i class="fas fa-arrow-right"></i> Siguiente: Ver Detalles
+                </button>
+            </div>
+        `;
+    } catch (error) {
+        content.innerHTML = `<div style="color: red;">Error al cargar tickets: ${error.message}</div>`;
+    }
+}
 
-        function showEmpresaForm() {
-            document.getElementById('empresaForm').reset();
-            document.getElementById('empresaId').value = '';
-            document.getElementById('empresaFormTitle').textContent = 'Nueva Empresa';
-            document.getElementById('empresaFormContainer').style.display = 'block';
-        }
+async function generateInvoicePreview() {
+    const checkboxes = document.querySelectorAll('.ticket-checkbox:checked');
+    const ticketIds = Array.from(checkboxes).map(cb => cb.value);
 
-        function cancelEmpresaForm() {
-            document.getElementById('empresaFormContainer').style.display = 'none';
-            document.getElementById('empresaForm').reset();
-        }
+    if (ticketIds.length === 0) {
+        showNotification('Por favor selecciona al menos un ticket', 'error');
+        return;
+    }
 
-        function editEmpresa(empresa) {
-            cancelEmpresaForm();
-            document.getElementById('empresaId').value = empresa.id;
-            document.getElementById('empresaNombre').value = empresa.nombre;
-            document.getElementById('empresaCif').value = empresa.cif || '';
-            document.getElementById('empresaDireccion').value = empresa.direccion || '';
-            document.getElementById('empresaTelefono').value = empresa.telefono || '';
-            document.getElementById('empresaEmail').value = empresa.email || '';
-            document.getElementById('empresaActive').value = empresa.activo ? '1' : '0';
-            document.getElementById('empresaFormTitle').textContent = 'Editar Empresa';
-            document.getElementById('empresaFormContainer').style.display = 'block';
-        }
+    try {
+        const response = await fetch('/api/invoices/tickets-summary', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'csrf-token': csrfToken
+            },
+            body: JSON.stringify({ ticket_ids: ticketIds })
+        });
 
-        async function saveEmpresa(event) {
-            event.preventDefault();
-            const empresaId = document.getElementById('empresaId').value;
-            const url = empresaId ? `/api/empresas/${empresaId}` : '/api/empresas';
-            const method = empresaId ? 'PUT' : 'POST';
+        const tickets = await response.json();
+        showInvoiceEditor(tickets, ticketIds);
+    } catch (error) {
+        showNotification('Error: ' + error.message, 'error');
+    }
+}
 
-            const empresaData = {
-                nombre: document.getElementById('empresaNombre').value,
-                cif: document.getElementById('empresaCif').value,
-                direccion: document.getElementById('empresaDireccion').value,
-                telefono: document.getElementById('empresaTelefono').value,
-                email: document.getElementById('empresaEmail').value,
-                activo: document.getElementById('empresaActive').value,
-                _csrf: csrfToken
-            };
+function showInvoiceEditor(tickets, ticketIds) {
+    const content = document.getElementById('facturacionContent');
 
-            try {
-                const response = await fetch(url, {
-                    method: method,
-                    headers: { 'Content-Type': 'application/json', 'csrf-token': csrfToken },
-                    body: JSON.stringify(empresaData)
-                });
+    let totalHoras = 0;
+    let totalMateriales = 0;
+    let htmlItems = '';
 
-                const result = await response.json();
-                if (!response.ok) throw new Error(result.error);
+    tickets.forEach(ticket => {
+        totalHoras += parseFloat(ticket.total_horas) || 0;
+        totalMateriales += parseFloat(ticket.total_materiales) || 0;
 
-                alert(`Empresa ${empresaId ? 'actualizada' : 'creada'} exitosamente.`);
-                cancelEmpresaForm();
-                loadEmpresas();
+        htmlItems += `
+            <tr style="border-bottom: 1px solid #e5e7eb;">
+                <td style="padding: 0.75rem;">${ticket.ticket_id}</td>
+                <td style="padding: 0.75rem;">${ticket.nombre}</td>
+                <td style="padding: 0.75rem;">
+                    <input type="number" class="item-horas-oficiales" data-ticket="${ticket.ticket_id}" placeholder="0" style="width: 60px; padding: 0.3rem; border: 1px solid #ddd; border-radius: 4px;">
+                    <small style="color: #666;"> h. oficial</small>
+                </td>
+                <td style="padding: 0.75rem;">
+                    <input type="number" class="item-horas-ayudante" data-ticket="${ticket.ticket_id}" placeholder="0" style="width: 60px; padding: 0.3rem; border: 1px solid #ddd; border-radius: 4px;">
+                    <small style="color: #666;"> h. ayudante</small>
+                </td>
+                <td style="padding: 0.75rem;">
+                    <input type="number" class="item-precio-oficial" data-ticket="${ticket.ticket_id}" placeholder="0.00" style="width: 70px; padding: 0.3rem; border: 1px solid #ddd; border-radius: 4px;">
+                    <small style="color: #666;"> €/h</small>
+                </td>
+                <td style="padding: 0.75rem;">
+                    <input type="number" class="item-precio-ayudante" data-ticket="${ticket.ticket_id}" placeholder="0.00" style="width: 70px; padding: 0.3rem; border: 1px solid #ddd; border-radius: 4px;">
+                    <small style="color: #666;"> €/h</small>
+                </td>
+                <td style="padding: 0.75rem; text-align: right;">
+                    <span class="item-subtotal" data-ticket="${ticket.ticket_id}">0.00 €</span>
+                </td>
+            </tr>
+        `;
+    });
 
-            } catch (error) {
-                console.error('Error saving empresa:', error);
-                alert('Error al guardar empresa: ' + error.message);
-            }
-        }
+    const firstTicket = tickets[0];
 
-        async function deleteEmpresa(id) {
-            if (!confirm('¿Está seguro de que desea eliminar esta empresa? Los tickets asociados quedarán sin empresa.')) {
-                return;
-            }
-            try {
-                const response = await fetch(`/api/empresas/${id}`, { method: 'DELETE', headers: { 'csrf-token': csrfToken } });
-                const result = await response.json();
-                if (!response.ok) throw new Error(result.error);
-                
-                alert('Empresa eliminada exitosamente.');
-                loadEmpresas();
+    content.innerHTML = `
+        <div style="background: #f9fafb; padding: 1.5rem; border-radius: 10px;">
+            <h3 style="margin-bottom: 1rem;">Editor de Factura</h3>
+            
+            <form onsubmit="event.preventDefault(); procesarFactura('${ticketIds.join("','")}');">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1.5rem;">
+                    <div>
+                        <label>Cliente</label>
+                        <input type="text" id="invoiceCliente" value="${firstTicket.nombre}" required style="width: 100%; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px;">
+                    </div>
+                    <div>
+                        <label>Email</label>
+                        <input type="email" id="invoiceEmail" value="${firstTicket.email}" required style="width: 100%; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px;">
+                    </div>
+                </div>
 
-            } catch (error) {
-                console.error('Error deleting empresa:', error);
-                alert('Error al eliminar empresa: ' + error.message);
-            }
-        }
+                <div style="margin-bottom: 1.5rem;">
+                    <h4 style="margin-bottom: 1rem;">Detalles por Ticket</h4>
+                    <table style="width: 100%; border-collapse: collapse; font-size: 0.9rem;">
+                        <thead style="background: #e5e7eb;">
+                            <tr>
+                                <th style="padding: 0.75rem; text-align: left;">Ticket</th>
+                                <th style="padding: 0.75rem; text-align: left;">Cliente</th>
+                                <th style="padding: 0.75rem; text-align: left;">H. Oficial</th>
+                                <th style="padding: 0.75rem; text-align: left;">H. Ayudante</th>
+                                <th style="padding: 0.75rem; text-align: left;">€ Oficial</th>
+                                <th style="padding: 0.75rem; text-align: left;">€ Ayudante</th>
+                                <th style="padding: 0.75rem; text-align: right;">Subtotal</th>
+                            </tr>
+                        </thead>
+                        <tbody id="invoiceItemsBody">
+                            ${htmlItems}
+                        </tbody>
+                    </table>
+                </div>
 
+                <div style="background: #f0f9ff; padding: 1rem; border-radius: 8px; margin-bottom: 1.5rem; border-left: 4px solid #3b82f6;">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                        <div>
+                            <p style="color: #666; font-size: 0.9rem;">Total Horas Detectadas</p>
+                            <p style="font-size: 1.3rem; font-weight: bold;">${totalHoras.toFixed(2)} h</p>
+                        </div>
+                        <div>
+                            <p style="color: #666; font-size: 0.9rem;">Total Materiales Detectados</p>
+                            <p style="font-size: 1.3rem; font-weight: bold;">${totalMateriales.toFixed(2)} €</p>
+                        </div>
+                    </div>
+                </div>
 
-        function setupEventListeners() {
-            // Filter buttons
-            document.querySelectorAll('.filter-btn').forEach(btn => {
-                btn.addEventListener('click', (e) => {
-                    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
-                    e.target.classList.add('active');
-                    currentFilter = e.target.dataset.filter;
-                    filterTickets();
-                });
+                <div style="display: flex; gap: 1rem;">
+                    <button type="button" onclick="toggleFacturacionPanel()" class="btn" style="background: #6b7280; flex: 1; padding: 0.75rem;">Cancelar</button>
+                    <button type="submit" class="btn" style="background: #10b981; flex: 1; padding: 0.75rem;">
+                        <i class="fas fa-check"></i> Generar Factura
+                    </button>
+                </div>
+            </form>
+        </div>
+    `;
+
+    // Add event listeners for calculations
+    document.querySelectorAll('.item-horas-oficiales, .item-horas-ayudante, .item-precio-oficial, .item-precio-ayudante').forEach(input => {
+        input.addEventListener('change', recalcularSubtotal);
+    });
+}
+
+function recalcularSubtotal() {
+    document.querySelectorAll('.item-subtotal').forEach(elem => {
+        const ticketId = elem.dataset.ticket;
+        const horasOficial = parseFloat(document.querySelector(`.item-horas-oficiales[data-ticket="${ticketId}"]`).value) || 0;
+        const horasAyudante = parseFloat(document.querySelector(`.item-horas-ayudante[data-ticket="${ticketId}"]`).value) || 0;
+        const precioOficial = parseFloat(document.querySelector(`.item-precio-oficial[data-ticket="${ticketId}"]`).value) || 0;
+        const precioAyudante = parseFloat(document.querySelector(`.item-precio-ayudante[data-ticket="${ticketId}"]`).value) || 0;
+
+        const subtotal = (horasOficial * precioOficial) + (horasAyudante * precioAyudante);
+        elem.textContent = subtotal.toFixed(2) + ' €';
+    });
+}
+
+async function procesarFactura(ticketIds) {
+    const cliente = document.getElementById('invoiceCliente').value;
+    const email = document.getElementById('invoiceEmail').value;
+
+    if (!cliente || !email) {
+        showNotification('Por favor completa los datos del cliente', 'error');
+        return;
+    }
+
+    const items = [];
+    document.querySelectorAll('.item-subtotal').forEach(elem => {
+        const ticketId = elem.dataset.ticket;
+        const horasOficial = parseFloat(document.querySelector(`.item-horas-oficiales[data-ticket="${ticketId}"]`).value) || 0;
+        const horasAyudante = parseFloat(document.querySelector(`.item-horas-ayudante[data-ticket="${ticketId}"]`).value) || 0;
+        const precioOficial = parseFloat(document.querySelector(`.item-precio-oficial[data-ticket="${ticketId}"]`).value) || 0;
+        const precioAyudante = parseFloat(document.querySelector(`.item-precio-ayudante[data-ticket="${ticketId}"]`).value) || 0;
+
+        const subtotal = (horasOficial * precioOficial) + (horasAyudante * precioAyudante);
+
+        if (horasOficial > 0 || horasAyudante > 0) {
+            items.push({
+                concepto: 'Servicios profesionales',
+                descripcion: `${ticketId} - Oficial: ${horasOficial}h, Ayudante: ${horasAyudante}h`,
+                cantidad: 1,
+                precio_unitario: subtotal,
+                total: subtotal
             });
+        }
+    });
 
-            // Servicio filter
-            document.getElementById('filterServicio').addEventListener('change', (e) => {
-                currentServicioFilter = e.target.value;
-                filterTickets();
-            });
+    if (items.length === 0) {
+        showNotification('Por favor ingresa al menos una línea de factura', 'error');
+        return;
+    }
 
-            // Prioridad filter
-            document.getElementById('filterPrioridad').addEventListener('change', (e) => {
-                currentPrioridadFilter = e.target.value;
-                filterTickets();
-            });
+    try {
+        const response = await fetch('/api/invoices/multi-ticket', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'csrf-token': csrfToken
+            },
+            body: JSON.stringify({
+                ticket_ids: ticketIds.split(','),
+                cliente_nombre: cliente,
+                cliente_email: email,
+                fecha_vencimiento: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+                items: items,
+                empresa_id: null
+            })
+        });
 
-            // Search box
-            document.getElementById('searchBox').addEventListener('input', (e) => {
-                searchTickets(e.target.value);
-            });
+        const result = await response.json();
+
+        if (response.ok) {
+            showNotification(`Factura ${result.invoiceId} creada exitosamente con ${result.ticketCount} ticket(s)`, 'success');
+            toggleFacturacionPanel();
+            loadTickets();
+        } else {
+            showNotification('Error: ' + (result.error || 'Error desconocido'), 'error');
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        showNotification('Error al procesar factura: ' + error.message, 'error');
+    }
+}
+
+
+function showEmpresaForm() {
+    document.getElementById('empresaForm').reset();
+    document.getElementById('empresaId').value = '';
+    document.getElementById('empresaFormTitle').textContent = 'Nueva Empresa';
+    document.getElementById('empresaFormContainer').style.display = 'block';
+}
+
+function cancelEmpresaForm() {
+    document.getElementById('empresaFormContainer').style.display = 'none';
+    document.getElementById('empresaForm').reset();
+}
+
+function editEmpresa(empresa) {
+    cancelEmpresaForm();
+    document.getElementById('empresaId').value = empresa.id;
+    document.getElementById('empresaNombre').value = empresa.nombre;
+    document.getElementById('empresaCif').value = empresa.cif || '';
+    document.getElementById('empresaDireccion').value = empresa.direccion || '';
+    document.getElementById('empresaTelefono').value = empresa.telefono || '';
+    document.getElementById('empresaEmail').value = empresa.email || '';
+    document.getElementById('empresaActive').value = empresa.activo ? '1' : '0';
+    document.getElementById('empresaVerifactu').checked = empresa.verifactu === 1;
+    document.getElementById('empresaFormTitle').textContent = 'Editar Empresa';
+    document.getElementById('empresaFormContainer').style.display = 'block';
+}
+
+async function saveEmpresa(event) {
+    event.preventDefault();
+    const empresaId = document.getElementById('empresaId').value;
+    const url = empresaId ? `/api/empresas/${empresaId}` : '/api/empresas';
+    const method = empresaId ? 'PUT' : 'POST';
+
+    const empresaData = {
+        nombre: document.getElementById('empresaNombre').value,
+        cif: document.getElementById('empresaCif').value,
+        direccion: document.getElementById('empresaDireccion').value,
+        telefono: document.getElementById('empresaTelefono').value,
+        email: document.getElementById('empresaEmail').value,
+        activo: parseInt(document.getElementById('empresaActive').value),
+        verifactu: document.getElementById('empresaVerifactu').checked ? 1 : 0,
+        _csrf: csrfToken
+    };
+
+    try {
+        const response = await fetch(url, {
+            method: method,
+            headers: { 'Content-Type': 'application/json', 'csrf-token': csrfToken },
+            body: JSON.stringify(empresaData)
+        });
+
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error);
+
+        showNotification(`Empresa ${empresaId ? 'actualizada' : 'creada'} exitosamente.`, 'success');
+        cancelEmpresaForm();
+        loadEmpresas();
+
+    } catch (error) {
+        console.error('Error saving empresa:', error);
+        showNotification('Error al guardar empresa: ' + error.message, 'error');
+    }
+}
+
+async function deleteEmpresa(id) {
+    const userConfirmed = await showConfirm('¿Está seguro de que desea eliminar esta empresa? Los tickets asociados quedarán sin empresa.', 'Eliminar Empresa');
+    if (!userConfirmed) return;
+    try {
+        const response = await fetch(`/api/empresas/${id}`, { method: 'DELETE', headers: { 'csrf-token': csrfToken } });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error);
+
+        showNotification('Empresa eliminada exitosamente.', 'success');
+        loadEmpresas();
+
+    } catch (error) {
+        console.error('Error deleting empresa:', error);
+        showNotification('Error al eliminar empresa: ' + error.message, 'error');
+    }
+}
+
+
+function setupEventListeners() {
+    // Filter buttons
+    document.querySelectorAll('.filter-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+            e.target.classList.add('active');
+            currentFilter = e.target.dataset.filter;
+            filterTickets();
+        });
+    });
+
+    // Servicio filter
+    document.getElementById('filterServicio').addEventListener('change', (e) => {
+        currentServicioFilter = e.target.value;
+        filterTickets();
+    });
+
+    // Prioridad filter
+    document.getElementById('filterPrioridad').addEventListener('change', (e) => {
+        currentPrioridadFilter = e.target.value;
+        filterTickets();
+    });
+
+    // Search box
+    document.getElementById('searchBox').addEventListener('input', (e) => {
+        searchTickets(e.target.value);
+    });
+}
+
+async function loadTickets() {
+    try {
+        const response = await fetch('/api/tickets');
+
+        // Verificar si la sesión expiró
+        if (response.status === 401) {
+            showNotification('Su sesión ha expirado. Por favor, inicie sesión nuevamente.', 'warning');
+            window.location.href = '/login';
+            return;
         }
 
-        async function loadTickets() {
-            try {
-                const response = await fetch('/api/tickets');
-                
-                // Verificar si la sesión expiró
-                if (response.status === 401) {
-                    alert('Su sesión ha expirado. Por favor, inicie sesión nuevamente.');
-                    window.location.href = '/login';
-                    return;
-                }
-                
-                allTickets = await response.json();
-                updateStatistics();
-                filterTickets();
-            } catch (error) {
-                console.error('Error loading tickets:', error);
-                document.getElementById('ticketsTableContainer').innerHTML = `
+        allTickets = await response.json();
+        updateStatistics();
+        filterTickets();
+    } catch (error) {
+        console.error('Error loading tickets:', error);
+        document.getElementById('ticketsTableContainer').innerHTML = `
                     <div class="empty-state">
                         <i class="fas fa-exclamation-triangle"></i>
                         <p>Error al cargar los tickets</p>
                     </div>
                 `;
-            }
+    }
+}
+
+// Load archived tickets
+async function loadArchivedTickets() {
+    try {
+        const response = await fetch('/api/tickets/archived/list');
+
+        if (response.status === 401) {
+            showNotification('Su sesión ha expirado. Por favor, inicie sesión nuevamente.', 'warning');
+            window.location.href = '/login';
+            return;
         }
 
-        // Load archived tickets
-        async function loadArchivedTickets() {
-            try {
-                const response = await fetch('/api/tickets/archived/list');
-                
-                if (response.status === 401) {
-                    alert('Su sesión ha expirado. Por favor, inicie sesión nuevamente.');
-                    window.location.href = '/login';
-                    return;
-                }
-                
-                if (response.status === 403) {
-                    alert('Solo administradores pueden ver tickets archivados');
-                    return;
-                }
-                
-                const archivedTickets = await response.json();
-                renderArchivedTickets(archivedTickets);
-            } catch (error) {
-                console.error('Error loading archived tickets:', error);
-                document.getElementById('ticketsTableContainer').innerHTML = `
+        if (response.status === 403) {
+            showNotification('Solo administradores pueden ver tickets archivados', 'error');
+            return;
+        }
+
+        const archivedTickets = await response.json();
+        renderArchivedTickets(archivedTickets);
+    } catch (error) {
+        console.error('Error loading archived tickets:', error);
+        document.getElementById('ticketsTableContainer').innerHTML = `
                     <div class="empty-state">
                         <i class="fas fa-exclamation-triangle"></i>
                         <p>Error al cargar los tickets archivados</p>
                     </div>
                 `;
-            }
-        }
+    }
+}
 
-        function renderArchivedTickets(tickets) {
-            const container = document.getElementById('ticketsTableContainer');
-            
-            if (tickets.length === 0) {
-                container.innerHTML = `
+function renderArchivedTickets(tickets) {
+    const container = document.getElementById('ticketsTableContainer');
+
+    if (tickets.length === 0) {
+        container.innerHTML = `
                     <div class="empty-state">
                         <i class="fas fa-archive"></i>
                         <p>No hay tickets archivados</p>
                     </div>
                 `;
-                return;
-            }
+        return;
+    }
 
-            const servicios = {
-                'reparacion': 'Reparación',
-                'redes': 'Redes',
-                'impresoras': 'Impresoras',
-                'seguridad': 'Seguridad',
-                'errores': 'Errores',
-                'soporte': 'Soporte'
-            };
+    const servicios = {
+        'construccion': 'Construcción',
+        'reparacion': 'Reparación',
+        'obras': 'Obras',
+        'fugas': 'Búsqueda de Fugas'
+    };
 
-            const html = `
+    const html = `
                 <table>
                     <thead>
                         <tr>
@@ -1111,77 +1184,75 @@ let allTickets = [];
                     </tbody>
                 </table>
             `;
-            
-            container.innerHTML = html;
-            applyPermissions();
-        }
 
-        function updateStatistics() {
-            document.getElementById('stat-total').textContent = allTickets.length;
-            document.getElementById('stat-pendiente').textContent = 
-                allTickets.filter(t => t.estado === 'pendiente').length;
-            document.getElementById('stat-en-proceso').textContent = 
-                allTickets.filter(t => t.estado === 'en_proceso').length;
-            document.getElementById('stat-resuelto').textContent = 
-                allTickets.filter(t => t.estado === 'resuelto').length;
-        }
+    container.innerHTML = html;
+    applyPermissions();
+}
 
-        function filterTickets() {
-            filteredTickets = allTickets;
-            
-            // Filter by status
-            if (currentFilter !== 'todos') {
-                filteredTickets = filteredTickets.filter(t => t.estado === currentFilter);
-            }
-            
-            // Filter by service
-            if (currentServicioFilter !== 'todos') {
-                filteredTickets = filteredTickets.filter(t => t.servicio === currentServicioFilter);
-            }
-            
-            // Filter by priority
-            if (currentPrioridadFilter !== 'todos') {
-                filteredTickets = filteredTickets.filter(t => t.prioridad === currentPrioridadFilter);
-            }
-            
-            renderTicketsTable();
-        }
+function updateStatistics() {
+    document.getElementById('stat-total').textContent = allTickets.length;
+    document.getElementById('stat-pendiente').textContent =
+        allTickets.filter(t => t.estado === 'pendiente').length;
+    document.getElementById('stat-en-proceso').textContent =
+        allTickets.filter(t => t.estado === 'en_proceso').length;
+    document.getElementById('stat-resuelto').textContent =
+        allTickets.filter(t => t.estado === 'resuelto').length;
+}
 
-        function searchTickets(query) {
-            const lowerQuery = query.toLowerCase();
-            filteredTickets = allTickets.filter(t => 
-                t.ticket_id.toLowerCase().includes(lowerQuery) ||
-                t.nombre.toLowerCase().includes(lowerQuery) ||
-                t.email.toLowerCase().includes(lowerQuery) ||
-                t.descripcion.toLowerCase().includes(lowerQuery)
-            );
-            renderTicketsTable();
-        }
+function filterTickets() {
+    filteredTickets = allTickets;
 
-        function renderTicketsTable() {
-            const container = document.getElementById('ticketsTableContainer');
-            
-            if (filteredTickets.length === 0) {
-                container.innerHTML = `
+    // Filter by status
+    if (currentFilter !== 'todos') {
+        filteredTickets = filteredTickets.filter(t => t.estado === currentFilter);
+    }
+
+    // Filter by service
+    if (currentServicioFilter !== 'todos') {
+        filteredTickets = filteredTickets.filter(t => t.servicio === currentServicioFilter);
+    }
+
+    // Filter by priority
+    if (currentPrioridadFilter !== 'todos') {
+        filteredTickets = filteredTickets.filter(t => t.prioridad === currentPrioridadFilter);
+    }
+
+    renderTicketsTable();
+}
+
+function searchTickets(query) {
+    const lowerQuery = query.toLowerCase();
+    filteredTickets = allTickets.filter(t =>
+        t.ticket_id.toLowerCase().includes(lowerQuery) ||
+        t.nombre.toLowerCase().includes(lowerQuery) ||
+        t.email.toLowerCase().includes(lowerQuery) ||
+        t.descripcion.toLowerCase().includes(lowerQuery)
+    );
+    renderTicketsTable();
+}
+
+function renderTicketsTable() {
+    const container = document.getElementById('ticketsTableContainer');
+
+    if (filteredTickets.length === 0) {
+        container.innerHTML = `
                     <div class="empty-state">
                         <i class="fas fa-inbox"></i>
                         <p>No hay tickets para mostrar</p>
                     </div>
                 `;
-                applyPermissions();
-                return;
-            }
+        applyPermissions();
+        return;
+    }
 
-            const servicios = {
-                'reparacion': 'Reparación',
-                'redes': 'Redes',
-                'impresoras': 'Impresoras',
-                'seguridad': 'Seguridad',
-                'errores': 'Errores',
-                'soporte': 'Soporte'
-            };
+    const servicios = {
+        'construccion': 'Construcción',
+        'reparacion': 'Reparación',
+        'obras': 'Obras',
+        'fugas': 'Búsqueda de Fugas'
+    };
 
-            const html = `
+    const html = `
                 <table>
                     <thead>
                         <tr>
@@ -1227,56 +1298,55 @@ let allTickets = [];
                     </tbody>
                 </table>
             `;
-            
-            container.innerHTML = html;
-            applyPermissions();
-        }
 
-        async function viewTicket(ticketId) {
-            try {
-                const [
-                    ticketResponse, 
-                    notesResponse, 
-                    whatsappResponse, 
-                    horasResponse, 
-                    materialsResponse,
-                    usersResponse,
-                    allMaterialsResponse,
-                    empresasResponse
-                ] = await Promise.all([
-                    fetch(`/api/tickets/${ticketId}`),
-                    fetch(`/api/tickets/${ticketId}/notes`),
-                    fetch(`/api/tickets/${ticketId}/whatsapp`),
-                    fetch(`/api/tickets/${ticketId}/horas`),
-                    fetch(`/api/tickets/${ticketId}/materiales`),
-                    fetch('/api/usuarios'), // For technician dropdown
-                    fetch('/api/materiales'), // For materials dropdown
-                    fetch('/api/empresas') // For empresas
-                ]);
-                
-                const ticket = await ticketResponse.json();
-                const notes = await notesResponse.json();
-                const whatsappContacts = await whatsappResponse.json();
-                const horasData = await horasResponse.json();
-                const ticketMaterials = await materialsResponse.json();
-                const users = await usersResponse.json();
-                const allMaterials = await allMaterialsResponse.json();
-                const empresas = await empresasResponse.json();
+    container.innerHTML = html;
+    applyPermissions();
+}
 
-                const operatives = users.filter(u => u.rol === 'tecnico' && u.activo);
-                
-                const servicios = {
-                    'reparacion': 'Reparación de Equipos',
-                    'redes': 'Montaje de Redes',
-                    'impresoras': 'Soporte de Impresoras',
-                    'seguridad': 'Seguridad Informática',
-                    'errores': 'Detección de Errores',
-                    'soporte': 'Soporte Técnico General',
-                    'desarrollo_app': 'Programación de Aplicaciones Personalizadas',
-                    'desarrollo_web': 'Desarrollo de Entornos Web'
-                };
+async function viewTicket(ticketId) {
+    try {
+        const [
+            ticketResponse,
+            notesResponse,
+            whatsappResponse,
+            horasResponse,
+            materialsResponse,
+            usersResponse,
+            allMaterialsResponse,
+            empresasResponse,
+            invoicesResponse
+        ] = await Promise.all([
+            fetch(`/api/tickets/${ticketId}`),
+            fetch(`/api/tickets/${ticketId}/notes`),
+            fetch(`/api/tickets/${ticketId}/whatsapp`),
+            fetch(`/api/tickets/${ticketId}/horas`),
+            fetch(`/api/tickets/${ticketId}/materiales`),
+            fetch('/api/usuarios'), // For technician dropdown
+            fetch('/api/materiales'), // For materials dropdown
+            fetch('/api/empresas'), // For empresas
+            fetch(`/api/tickets/${ticketId}/invoices`) // For invoices
+        ]);
 
-                const notesHtml = notes.length > 0 ? notes.map(note => `
+        const ticket = await ticketResponse.json();
+        const notes = await notesResponse.json();
+        const whatsappContacts = await whatsappResponse.json();
+        const horasData = await horasResponse.json();
+        const ticketMaterials = await materialsResponse.json();
+        const users = await usersResponse.json();
+        const allMaterials = await allMaterialsResponse.json();
+        const empresas = await empresasResponse.json();
+        const invoices = await invoicesResponse.json();
+
+        const operatives = users.filter(u => u.rol === 'tecnico' && u.activo);
+
+        const servicios = {
+            'construccion': 'Construcción',
+            'reparacion': 'Reparación',
+            'obras': 'Obras',
+            'fugas': 'Búsqueda de Fugas'
+        };
+
+        const notesHtml = notes.length > 0 ? notes.map(note => `
                     <div class="note-item">
                         <div class="note-header">
                             <div>
@@ -1291,7 +1361,7 @@ let allTickets = [];
                     </div>
                 `).join('') : '<p style="color: #6b7280;">No hay notas aún</p>';
 
-                const horasHtml = horasData.horas && horasData.horas.length > 0 ? horasData.horas.map(hora => `
+        const horasHtml = horasData.horas && horasData.horas.length > 0 ? horasData.horas.map(hora => `
                     <div class="note-item" style="border-left-color: #f59e0b;">
                         <div class="note-header">
                             <div>
@@ -1306,14 +1376,14 @@ let allTickets = [];
                         ${hora.descripcion ? `<div class="note-text">${hora.descripcion}</div>` : ''}
                     </div>
                 `).join('') : '<p style="color: #6b7280;">Sin registros de horas</p>';
-                
-                const resumenHoras = horasData.porTecnico && horasData.porTecnico.length > 0 ? horasData.porTecnico.map(t => `
+
+        const resumenHoras = horasData.porTecnico && horasData.porTecnico.length > 0 ? horasData.porTecnico.map(t => `
                     <div style="padding: 0.5rem; background: #f3f4f6; border-radius: 4px; margin-bottom: 0.5rem;">
                         <strong>${t.tecnico_nombre}:</strong> ${t.total_horas}h (${t.registros} registro${t.registros > 1 ? 's' : ''})
                     </div>
                 `).join('') : '';
 
-                const materialsHtml = ticketMaterials.length > 0 ? ticketMaterials.map(mat => `
+        const materialsHtml = ticketMaterials.length > 0 ? ticketMaterials.map(mat => `
                      <div class="note-item" style="border-left-color: #8b5cf6;">
                         <div class="note-header">
                             <div>
@@ -1328,9 +1398,9 @@ let allTickets = [];
                         </div>
                     </div>
                 `).join('') : '<p style="color: #6b7280;">Sin materiales registrados</p>';
-                const totalMaterialCost = ticketMaterials.reduce((acc, mat) => acc + (mat.cantidad * mat.precio_unitario), 0);
+        const totalMaterialCost = ticketMaterials.reduce((acc, mat) => acc + (mat.cantidad * mat.precio_unitario), 0);
 
-                const whatsappHistoryHtml = whatsappContacts.length > 0 ? whatsappContacts.map(contact => `
+        const whatsappHistoryHtml = whatsappContacts.length > 0 ? whatsappContacts.map(contact => `
                     <div class="whatsapp-contact-item">
                         <strong>${contact.enviado_por}</strong> contactó al cliente
                         ${contact.mensaje ? `<br>Mensaje: "${contact.mensaje}"` : ''}
@@ -1338,7 +1408,22 @@ let allTickets = [];
                     </div>
                 `).join('') : '<p style="color: rgba(255,255,255,0.7); font-size: 0.9rem;">No hay contactos previos</p>';
 
-                document.getElementById('ticketDetails').innerHTML = `
+        const invoicesHtml = invoices.length > 0 ? invoices.map(inv => `
+                    <div class="note-item" style="border-left-color: #059669;">
+                        <div class="note-header">
+                            <div>
+                                <strong>${inv.factura_id}</strong>
+                                <span>- Total: ${inv.total.toFixed(2)} €</span>
+                                <small>${new Date(inv.fecha_emision).toLocaleDateString('es-ES')}</small>
+                            </div>
+                            <button class="btn-small btn-view" onclick="viewInvoice('${inv.factura_id}')">
+                                <i class="fas fa-eye"></i> Ver
+                            </button>
+                        </div>
+                    </div>
+                `).join('') : '<p style="color: #6b7280;">No hay facturas para este ticket</p>';
+
+        document.getElementById('ticketDetails').innerHTML = `
                     <div class="detail-row">
                         <div class="detail-label">Ticket ID</div>
                         <div><strong>${ticket.ticket_id}</strong></div>
@@ -1363,9 +1448,9 @@ let allTickets = [];
                         <div class="detail-label">Empresa</div>
                         <div>
                             ${ticket.empresa_id ? (() => {
-                                const empresa = empresas.find(e => e.id === ticket.empresa_id);
-                                return empresa ? `<strong>${empresa.nombre}</strong>` : 'Sin empresa';
-                            })() : 'Sin empresa'}
+                const empresa = empresas.find(e => e.id === ticket.empresa_id);
+                return empresa ? `<strong>${empresa.nombre}</strong>` : 'Sin empresa';
+            })() : 'Sin empresa'}
                             ${isAdmin ? `<button class="btn" style="background: #6366f1; margin-left: 1rem; padding: 0.3rem 0.8rem; font-size: 0.875rem;" onclick="showTransferirEmpresaModal('${ticket.ticket_id}', ${ticket.empresa_id || 'null'})">
                                 <i class="fas fa-exchange-alt"></i> Transferir
                             </button>` : ''}
@@ -1413,7 +1498,14 @@ let allTickets = [];
                         </div>
                     </div>
                     
-                    <div class="assignment-section">
+            <div class="assignment-section">
+                <div class="detail-label"><i class="fas fa-calendar-plus"></i> Gestionar Citas</div>
+                <button class="btn" style="background: #3b82f6; width: 100%; margin-top: 0.5rem;" onclick="showAddAppointmentModal('${ticket.ticket_id}')">
+                    <i class="fas fa-calendar-alt"></i> Agendar Nueva Cita
+                </button>
+            </div>
+            
+            <div class="assignment-section">
                         <div class="detail-label"><i class="fas fa-user"></i> Asignar Técnico</div>
                         <select id="tecnicoSelect" class="filter-select" style="width: 100%; margin-top: 0.5rem;">
                             <option value="">Sin asignar</option>
@@ -1495,604 +1587,593 @@ let allTickets = [];
 
                     <div class="notes-section" style="border-top: 2px solid #065f46; background: #d1fae5;">
                         <h3><i class="fas fa-file-invoice-dollar"></i> Facturación</h3>
-                        <div id="invoiceList" style="margin-top: 1rem;">
-                            <!-- Las facturas se cargarán aquí -->
+                        <div id="invoiceList" style="margin-top: 1rem; max-height: 250px; overflow-y: auto;">
+                            ${invoicesHtml}
                         </div>
                         <button class="btn-add-note" style="background-color: #065f46" onclick="createInvoiceForTicket('${ticket.ticket_id}')">
                             <i class="fas fa-plus"></i> Crear Factura
                         </button>
                     </div>
                 `;
-                
-                document.getElementById('ticketModal').classList.add('active');
-                applyPermissions();
-            } catch (error) {
-                console.error('Error loading ticket details:', error);
-                alert('Error al cargar los detalles del ticket: ' + error.message);
-            }
+
+        document.getElementById('ticketModal').classList.add('active');
+        applyPermissions();
+    } catch (error) {
+        console.error('Error loading ticket details:', error);
+        showNotification('Error al cargar los detalles del ticket: ' + error.message, 'error');
+    }
+}
+
+async function updateTicketStatus(ticketId) {
+    const newStatus = document.getElementById('statusSelect').value;
+
+    try {
+        const response = await fetch(`/api/tickets/${ticketId}/status`, {
+            method: 'PATCH',
+            headers: {
+                'Content-Type': 'application/json', 'csrf-token': csrfToken
+            },
+            body: JSON.stringify({ estado: newStatus })
+        });
+
+        if (response.ok) {
+            showNotification('Estado actualizado correctamente', 'success');
+            closeModal();
+            loadTickets();
+        } else {
+            showNotification('Error al actualizar el estado', 'error');
+        }
+    } catch (error) {
+        console.error('Error updating status:', error);
+        showNotification('Error al actualizar el estado', 'error');
+    }
+}
+
+function closeModal() {
+    document.getElementById('ticketModal').classList.remove('active');
+}
+
+async function addNote(ticketId) {
+    const nota = document.getElementById('nuevaNota').value;
+    const autor = document.getElementById('autorNota').value;
+
+    if (!nota || !autor) {
+        showNotification('Por favor completa todos los campos', 'warning');
+        return;
+    }
+
+    try {
+        const response = await fetch(`/api/tickets/${ticketId}/notes`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'csrf-token': csrfToken },
+            body: JSON.stringify({ nota, autor })
+        });
+
+        if (response.ok) {
+            document.getElementById('nuevaNota').value = '';
+            document.getElementById('autorNota').value = '';
+            viewTicket(ticketId); // Reload ticket to show new note
+        } else {
+            showNotification('Error al añadir nota', 'error');
+        }
+    } catch (error) {
+        console.error('Error adding note:', error);
+        showNotification('Error al añadir nota', 'error');
+    }
+}
+
+async function deleteNoteFromTicket(noteId) {
+    const userConfirmed = await showConfirm('¿Está seguro que desea archivar esta nota? Se ocultará pero podrá recuperarse.', 'Archivar Nota');
+    if (!userConfirmed) return;
+
+    try {
+        const response = await fetch(`/api/notes/${noteId}`, {
+            method: 'DELETE',
+            headers: { 'csrf-token': csrfToken }
+        });
+
+        const result = await response.json();
+
+        if (response.ok) {
+            showNotification('Nota archivada exitosamente', 'success');
+            // ... load ticket logic ...
+        } else if (response.status === 403) {
+            showNotification('Solo administradores pueden archivar notas', 'error');
+        } else {
+            showNotification('Error: ' + result.error, 'error');
+        }
+    } catch (error) {
+        showNotification('Error al archivar nota: ' + error.message, 'error');
+    }
+}
+
+// ==================== HORAS DE TRABAJO ====================
+
+async function addHorasTrabajo(ticketId) {
+    const tecnicoId = document.getElementById('horasTecnicoSelect').value;
+    const tecnicoNombre = document.getElementById('horasTecnicoSelect').options[document.getElementById('horasTecnicoSelect').selectedIndex].dataset.name;
+    const horas = parseFloat(document.getElementById('horasTrabajadas').value);
+    const descripcion = document.getElementById('descripcionHoras').value;
+
+    if (!tecnicoId || !tecnicoNombre || !horas || horas <= 0) {
+        showNotification('Por favor completa todos los campos requeridos', 'warning');
+        return;
+    }
+
+    try {
+        const response = await fetch(`/api/tickets/${ticketId}/horas`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'csrf-token': csrfToken },
+            body: JSON.stringify({
+                usuarioId: parseInt(tecnicoId),
+                tecnicoNombre,
+                horas,
+                descripcion
+            })
+        });
+
+        if (response.ok) {
+            showNotification('Horas registradas exitosamente', 'success');
+            document.getElementById('horasTecnicoSelect').value = '';
+            document.getElementById('horasTrabajadas').value = '';
+            document.getElementById('descripcionHoras').value = '';
+            viewTicket(ticketId);
+        } else {
+            const result = await response.json();
+            showNotification('Error: ' + result.error, 'error');
+        }
+    } catch (error) {
+        console.error('Error registrando horas:', error);
+        showNotification('Error al registrar horas', 'error');
+    }
+}
+
+async function deleteHoraTrabajo(horaId, ticketId) {
+    const userConfirmed = await showConfirm('¿Está seguro que desea eliminar este registro de horas?', 'Eliminar Registro');
+    if (!userConfirmed) return;
+
+    try {
+        const response = await fetch(`/api/tickets/horas/${horaId}`, {
+            method: 'DELETE',
+            headers: { 'csrf-token': csrfToken }
+        });
+
+        if (response.ok) {
+            showNotification('Registro de horas eliminado', 'success');
+            viewTicket(ticketId);
+        } else if (response.status === 403) {
+            showNotification('Solo administradores pueden eliminar registros de horas', 'error');
+        } else {
+            const result = await response.json();
+            showNotification('Error: ' + result.error, 'error');
+        }
+    } catch (error) {
+        console.error('Error eliminando horas:', error);
+        showNotification('Error al eliminar horas', 'error');
+    }
+}
+
+// ==================== TICKET MATERIALS ====================
+
+async function addMaterialToTicket(ticketId) {
+    const materialId = document.getElementById('materialSelect').value;
+    const cantidad = parseFloat(document.getElementById('materialCantidad').value);
+
+    if (!materialId || !cantidad || cantidad <= 0) {
+        showNotification('Por favor, selecciona un material y especifica una cantidad válida.', 'warning');
+        return;
+    }
+
+    try {
+        const response = await fetch(`/api/tickets/${ticketId}/materiales`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'csrf-token': csrfToken },
+            body: JSON.stringify({ material_id: materialId, cantidad: cantidad })
+        });
+
+        if (!response.ok) {
+            const result = await response.json();
+            throw new Error(result.error);
         }
 
-        async function updateTicketStatus(ticketId) {
-            const newStatus = document.getElementById('statusSelect').value;
-            
-            try {
-                const response = await fetch(`/api/tickets/${ticketId}/status`, {
-                    method: 'PATCH',
-                    headers: {
-                        'Content-Type': 'application/json', 'csrf-token': csrfToken
-                    },
-                    body: JSON.stringify({ estado: newStatus })
-                });
+        showNotification('Material añadido al ticket.', 'success');
+        viewTicket(ticketId); // Refresh the modal
 
-                if (response.ok) {
-                    alert('Estado actualizado correctamente');
-                    closeModal();
-                    loadTickets();
-                } else {
-                    alert('Error al actualizar el estado');
-                }
-            } catch (error) {
-                console.error('Error updating status:', error);
-                alert('Error al actualizar el estado');
-            }
+    } catch (error) {
+        console.error('Error adding material to ticket:', error);
+        showNotification('Error al añadir material: ' + error.message, 'error');
+    }
+}
+
+async function removeMaterialFromTicket(ticketMaterialId, ticketId) {
+    const userConfirmed = await showConfirm('¿Está seguro de que desea eliminar este material del ticket?', 'Eliminar Material');
+    if (!userConfirmed) return;
+    try {
+        const response = await fetch(`/api/tickets/materiales/${ticketMaterialId}`, {
+            method: 'DELETE',
+            headers: { 'csrf-token': csrfToken }
+        });
+
+        if (!response.ok) {
+            const result = await response.json();
+            throw new Error(result.error);
         }
 
-        function closeModal() {
-            document.getElementById('ticketModal').classList.remove('active');
+        showNotification('Material eliminado del ticket.', 'success');
+        viewTicket(ticketId); // Refresh the modal
+
+    } catch (error) {
+        console.error('Error removing material from ticket:', error);
+        showNotification('Error al eliminar material: ' + error.message, 'error');
+    }
+}
+
+async function assignTechnicianToTicket(ticketId) {
+    const tecnico = document.getElementById('tecnicoSelect').value;
+
+    if (!tecnico) {
+        showNotification('Por favor selecciona un técnico', 'warning');
+        return;
+    }
+
+    try {
+        const response = await fetch(`/api/tickets/${ticketId}/assign`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json', 'csrf-token': csrfToken },
+            body: JSON.stringify({ tecnico })
+        });
+
+        if (response.ok) {
+            showNotification('Técnico asignado correctamente', 'success');
+            closeModal();
+            loadTickets();
+        } else {
+            showNotification('Error al asignar técnico', 'error');
         }
+    } catch (error) {
+        console.error('Error assigning technician:', error);
+        showNotification('Error al asignar técnico', 'error');
+    }
+}
 
-        async function addNote(ticketId) {
-            const nota = document.getElementById('nuevaNota').value;
-            const autor = document.getElementById('autorNota').value;
-            
-            if (!nota || !autor) {
-                alert('Por favor completa todos los campos');
-                return;
-            }
-            
-            try {
-                const response = await fetch(`/api/tickets/${ticketId}/notes`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'csrf-token': csrfToken },
-                    body: JSON.stringify({ nota, autor })
-                });
-                
-                if (response.ok) {
-                    document.getElementById('nuevaNota').value = '';
-                    document.getElementById('autorNota').value = '';
-                    viewTicket(ticketId); // Reload ticket to show new note
-                } else {
-                    alert('Error al añadir nota');
-                }
-            } catch (error) {
-                console.error('Error adding note:', error);
-                alert('Error al añadir nota');
-            }
-        }
+function exportToCSV() {
+    if (filteredTickets.length === 0) {
+        showNotification('No hay tickets para exportar', 'info');
+        return;
+    }
 
-        // Delete note
-        async function deleteNoteFromTicket(noteId) {
-            if (!confirm('¿Está seguro que desea archivar esta nota? Se oculará pero podrá recuperarse.')) {
-                return;
-            }
-            
-            try {
-                const response = await fetch(`/api/notes/${noteId}`, {
-                    method: 'DELETE',
-                    headers: { 'csrf-token': csrfToken }
-                });
-                
-                const result = await response.json();
-                
-                if (response.ok) {
-                    alert('Nota archivada exitosamente');
-                    // Reload the current ticket
-                    const ticketId = document.querySelector('input[type="hidden"][id*="ticket"]')?.value;
-                    if (ticketId) {
-                        viewTicket(ticketId);
-                    }
-                } else if (response.status === 403) {
-                    alert('Solo administradores pueden archivar notas');
-                } else {
-                    alert('Error: ' + result.error);
-                }
-            } catch (error) {
-                alert('Error al archivar nota: ' + error.message);
-            }
-        }
+    const servicios = {
+        'construccion': 'Construcción',
+        'reparacion': 'Reparación',
+        'obras': 'Obras',
+        'fugas': 'Búsqueda de Fugas'
+    };
 
-        // ==================== HORAS DE TRABAJO ====================
+    const headers = ['Ticket ID', 'Cliente', 'Email', 'Teléfono', 'Servicio', 'Prioridad', 'Estado', 'Técnico Asignado', 'Descripción', 'Fecha'];
+    const rows = filteredTickets.map(ticket => [
+        ticket.ticket_id,
+        ticket.nombre,
+        ticket.email,
+        ticket.telefono,
+        servicios[ticket.servicio] || ticket.servicio,
+        ticket.prioridad,
+        ticket.estado,
+        ticket.tecnico_asignado || 'No asignado',
+        ticket.descripcion.replace(/,/g, ';'),
+        new Date(ticket.fecha_creacion).toLocaleString('es-ES')
+    ]);
 
-        async function addHorasTrabajo(ticketId) {
-            const tecnicoId = document.getElementById('tecnicoId').value;
-            const tecnicoNombre = document.getElementById('tecnicoNombre').value;
-            const horas = parseFloat(document.getElementById('horasTrabajadas').value);
-            const descripcion = document.getElementById('descripcionHoras').value;
-            
-            if (!tecnicoId || !tecnicoNombre || !horas || horas <= 0) {
-                alert('Por favor completa todos los campos requeridos');
-                return;
-            }
-            
-            try {
-                const response = await fetch(`/api/tickets/${ticketId}/horas`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'csrf-token': csrfToken },
-                    body: JSON.stringify({ 
-                        usuarioId: parseInt(tecnicoId),
-                        tecnicoNombre, 
-                        horas, 
-                        descripcion 
-                    })
-                });
-                
-                if (response.ok) {
-                    alert('Horas registradas exitosamente');
-                    document.getElementById('tecnicoId').value = '';
-                    document.getElementById('tecnicoNombre').value = '';
-                    document.getElementById('horasTrabajadas').value = '';
-                    document.getElementById('descripcionHoras').value = '';
-                    viewTicket(ticketId);
-                } else {
-                    const result = await response.json();
-                    alert('Error: ' + result.error);
-                }
-            } catch (error) {
-                console.error('Error registrando horas:', error);
-                alert('Error al registrar horas');
-            }
-        }
+    const csv = [headers, ...rows].map(row => row.map(cell => `"${cell}"`).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `tickets_${new Date().toISOString().split('T')[0]}.csv`;
+    link.click();
+}
 
-        async function deleteHoraTrabajo(horaId, ticketId) {
-            if (!confirm('¿Está seguro que desea eliminar este registro de horas?')) {
-                return;
-            }
-            
-            try {
-                const response = await fetch(`/api/tickets/horas/${horaId}`, {
-                    method: 'DELETE',
-                    headers: { 'csrf-token': csrfToken }
-                });
-                
-                if (response.ok) {
-                    alert('Registro de horas eliminado');
-                    viewTicket(ticketId);
-                } else if (response.status === 403) {
-                    alert('Solo administradores pueden eliminar registros de horas');
-                } else {
-                    const result = await response.json();
-                    alert('Error: ' + result.error);
-                }
-            } catch (error) {
-                console.error('Error eliminando horas:', error);
-                alert('Error al eliminar horas');
-            }
-        }
+function setWhatsAppMessage(message) {
+    document.getElementById('whatsappMessage').value = message;
+}
 
-        // ==================== TICKET MATERIALS ====================
+function formatPhoneNumber(phone) {
+    // Remove all non-numeric characters
+    let cleaned = phone.replace(/\D/g, '');
 
-        async function addMaterialToTicket(ticketId) {
-            const materialId = document.getElementById('materialSelect').value;
-            const cantidad = parseFloat(document.getElementById('materialCantidad').value);
+    // If starts with 0, assume it's a national number and add country code
+    if (cleaned.startsWith('0')) {
+        cleaned = '34' + cleaned.substring(1); // Spain country code
+    }
 
-            if (!materialId || !cantidad || cantidad <= 0) {
-                alert('Por favor, selecciona un material y especifica una cantidad válida.');
-                return;
-            }
+    // If doesn't start with country code, add Spain code
+    if (!cleaned.startsWith('34') && cleaned.length < 11) {
+        cleaned = '34' + cleaned;
+    }
 
-            try {
-                const response = await fetch(`/api/tickets/${ticketId}/materiales`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'csrf-token': csrfToken },
-                    body: JSON.stringify({ material_id: materialId, cantidad: cantidad })
-                });
+    return cleaned;
+}
 
-                if (!response.ok) {
-                    const result = await response.json();
-                    throw new Error(result.error);
-                }
-                
-                alert('Material añadido al ticket.');
-                viewTicket(ticketId); // Refresh the modal
+async function sendWhatsApp(phone, ticketId, clientName) {
+    const message = document.getElementById('whatsappMessage').value;
+    const tecnico = document.getElementById('tecnicoWhatsApp').value;
 
-            } catch (error) {
-                console.error('Error adding material to ticket:', error);
-                alert('Error al añadir material: ' + error.message);
-            }
-        }
+    if (!tecnico) {
+        showNotification('Por favor ingresa tu nombre', 'warning');
+        return;
+    }
 
-        async function removeMaterialFromTicket(ticketMaterialId, ticketId) {
-            if (!confirm('¿Está seguro de que desea eliminar este material del ticket?')) {
-                return;
-            }
-            try {
-                const response = await fetch(`/api/tickets/materiales/${ticketMaterialId}`, {
-                    method: 'DELETE',
-                    headers: { 'csrf-token': csrfToken }
-                });
+    const formattedPhone = formatPhoneNumber(phone);
+    const encodedMessage = encodeURIComponent(message || `Hola ${clientName}, te contacto por tu ticket ${ticketId}.`);
+    const whatsappUrl = `https://wa.me/${formattedPhone}?text=${encodedMessage}`;
 
-                if (!response.ok) {
-                    const result = await response.json();
-                    throw new Error(result.error);
-                }
-                
-                alert('Material eliminado del ticket.');
-                viewTicket(ticketId); // Refresh the modal
+    // Register contact in database
+    try {
+        await fetch(`/api/tickets/${ticketId}/whatsapp`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'csrf-token': csrfToken },
+            body: JSON.stringify({
+                telefono: phone,
+                mensaje: message || `Hola ${clientName}, te contacto por tu ticket ${ticketId}.`,
+                enviado_por: tecnico
+            })
+        });
+    } catch (error) {
+        console.error('Error registering WhatsApp contact:', error);
+    }
 
-            } catch (error) {
-                console.error('Error removing material from ticket:', error);
-                alert('Error al eliminar material: ' + error.message);
-            }
-        }
+    // Open WhatsApp
+    window.open(whatsappUrl, '_blank');
 
-        async function assignTechnicianToTicket(ticketId) {
-            const tecnico = document.getElementById('tecnicoSelect').value;
-            
-            if (!tecnico) {
-                alert('Por favor selecciona un técnico');
-                return;
-            }
-            
-            try {
-                const response = await fetch(`/api/tickets/${ticketId}/assign`, {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json', 'csrf-token': csrfToken },
-                    body: JSON.stringify({ tecnico })
-                });
-                
-                if (response.ok) {
-                    alert('Técnico asignado correctamente');
-                    closeModal();
-                    loadTickets();
-                } else {
-                    alert('Error al asignar técnico');
-                }
-            } catch (error) {
-                console.error('Error assigning technician:', error);
-                alert('Error al asignar técnico');
-            }
-        }
+    // Reload ticket to show new contact
+    setTimeout(() => viewTicket(ticketId), 1000);
+}
 
-        function exportToCSV() {
-            if (filteredTickets.length === 0) {
-                alert('No hay tickets para exportar');
-                return;
-            }
+function openWhatsApp(phone, ticketId, clientName) {
+    const formattedPhone = formatPhoneNumber(phone);
+    const message = `Hola ${clientName}, te contacto por tu ticket ${ticketId}. ¿En qué puedo ayudarte?`;
+    const encodedMessage = encodeURIComponent(message);
+    const whatsappUrl = `https://wa.me/${formattedPhone}?text=${encodedMessage}`;
 
-            const servicios = {
-                'reparacion': 'Reparación de Equipos',
-                'redes': 'Montaje de Redes',
-                'impresoras': 'Soporte de Impresoras',
-                'seguridad': 'Seguridad Informática',
-                'errores': 'Detección de Errores',
-                'soporte': 'Soporte Técnico General',
-                'desarrollo_app': 'Programación de Aplicaciones Personalizadas',
-                'desarrollo_web': 'Desarrollo de Entornos Web'
-            };
+    window.open(whatsappUrl, '_blank');
+}
 
-            const headers = ['Ticket ID', 'Cliente', 'Email', 'Teléfono', 'Servicio', 'Prioridad', 'Estado', 'Técnico Asignado', 'Descripción', 'Fecha'];
-            const rows = filteredTickets.map(ticket => [
-                ticket.ticket_id,
-                ticket.nombre,
-                ticket.email,
-                ticket.telefono,
-                servicios[ticket.servicio] || ticket.servicio,
-                ticket.prioridad,
-                ticket.estado,
-                ticket.tecnico_asignado || 'No asignado',
-                ticket.descripcion.replace(/,/g, ';'),
-                new Date(ticket.fecha_creacion).toLocaleString('es-ES')
-            ]);
+// Edit ticket
+async function editTicket(ticketId) {
+    try {
+        const response = await fetch(`/api/tickets/${ticketId}`);
+        const ticket = await response.json();
 
-            const csv = [headers, ...rows].map(row => row.map(cell => `"${cell}"`).join(',')).join('\n');
-            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-            const link = document.createElement('a');
-            link.href = URL.createObjectURL(blob);
-            link.download = `tickets_${new Date().toISOString().split('T')[0]}.csv`;
-            link.click();
-        }
+        const servicios = {
+            'reparacion': 'Reparación de Equipos',
+            'redes': 'Montaje de Redes',
+            'impresoras': 'Soporte de Impresoras',
+            'seguridad': 'Seguridad Informática',
+            'errores': 'Detección de Errores',
+            'soporte': 'Soporte Técnico General',
+            'desarrollo_app': 'Programación de Aplicaciones Personalizadas',
+            'desarrollo_web': 'Desarrollo de Entornos Web'
+        };
 
-        function setWhatsAppMessage(message) {
-            document.getElementById('whatsappMessage').value = message;
-        }
+        document.getElementById('editTicketId').value = ticketId;
+        document.getElementById('editTicketNombre').value = ticket.nombre;
+        document.getElementById('editTicketEmail').value = ticket.email;
+        document.getElementById('editTicketTelefono').value = ticket.telefono;
+        document.getElementById('editTicketServicio').value = ticket.servicio;
+        document.getElementById('editTicketEmpresa').value = ticket.empresa_id || '';
+        document.getElementById('editTicketPrioridad').value = ticket.prioridad;
+        document.getElementById('editTicketEstado').value = ticket.estado;
+        document.getElementById('editTicketTecnico').value = ticket.tecnico_asignado || '';
+        document.getElementById('editTicketDescripcion').value = ticket.descripcion;
 
-        function formatPhoneNumber(phone) {
-            // Remove all non-numeric characters
-            let cleaned = phone.replace(/\D/g, '');
-            
-            // If starts with 0, assume it's a national number and add country code
-            if (cleaned.startsWith('0')) {
-                cleaned = '34' + cleaned.substring(1); // Spain country code
-            }
-            
-            // If doesn't start with country code, add Spain code
-            if (!cleaned.startsWith('34') && cleaned.length < 11) {
-                cleaned = '34' + cleaned;
-            }
-            
-            return cleaned;
-        }
+        document.getElementById('editTicketModal').style.display = 'block';
+    } catch (error) {
+        showNotification('Error al cargar el ticket: ' + error.message, 'error');
+    }
+}
 
-        async function sendWhatsApp(phone, ticketId, clientName) {
-            const message = document.getElementById('whatsappMessage').value;
-            const tecnico = document.getElementById('tecnicoWhatsApp').value;
-            
-            if (!tecnico) {
-                alert('Por favor ingresa tu nombre');
-                return;
-            }
+// Save edited ticket
+async function saveTicketEdit() {
+    const ticketId = document.getElementById('editTicketId').value;
+    const empresaId = document.getElementById('editTicketEmpresa').value;
 
-            const formattedPhone = formatPhoneNumber(phone);
-            const encodedMessage = encodeURIComponent(message || `Hola ${clientName}, te contacto por tu ticket ${ticketId}.`);
-            const whatsappUrl = `https://wa.me/${formattedPhone}?text=${encodedMessage}`;
-            
-            // Register contact in database
-            try {
-                await fetch(`/api/tickets/${ticketId}/whatsapp`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'csrf-token': csrfToken },
-                    body: JSON.stringify({ 
-                        telefono: phone, 
-                        mensaje: message || `Hola ${clientName}, te contacto por tu ticket ${ticketId}.`,
-                        enviado_por: tecnico 
-                    })
-                });
-            } catch (error) {
-                console.error('Error registering WhatsApp contact:', error);
-            }
-            
-            // Open WhatsApp
-            window.open(whatsappUrl, '_blank');
-            
-            // Reload ticket to show new contact
-            setTimeout(() => viewTicket(ticketId), 1000);
-        }
+    const ticketData = {
+        nombre: document.getElementById('editTicketNombre').value,
+        email: document.getElementById('editTicketEmail').value,
+        telefono: document.getElementById('editTicketTelefono').value,
+        servicio: document.getElementById('editTicketServicio').value,
+        empresa_id: empresaId ? parseInt(empresaId) : null,
+        prioridad: document.getElementById('editTicketPrioridad').value,
+        estado: document.getElementById('editTicketEstado').value,
+        tecnico_asignado: document.getElementById('editTicketTecnico').value,
+        descripcion: document.getElementById('editTicketDescripcion').value
+    };
 
-        function openWhatsApp(phone, ticketId, clientName) {
-            const formattedPhone = formatPhoneNumber(phone);
-            const message = `Hola ${clientName}, te contacto por tu ticket ${ticketId}. ¿En qué puedo ayudarte?`;
-            const encodedMessage = encodeURIComponent(message);
-            const whatsappUrl = `https://wa.me/${formattedPhone}?text=${encodedMessage}`;
-            
-            window.open(whatsappUrl, '_blank');
-        }
+    try {
+        const response = await fetch(`/api/tickets/${ticketId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json', 'csrf-token': csrfToken },
+            body: JSON.stringify(ticketData)
+        });
 
-        // Edit ticket
-        async function editTicket(ticketId) {
-            try {
-                const response = await fetch(`/api/tickets/${ticketId}`);
-                const ticket = await response.json();
-                
-                const servicios = {
-                    'reparacion': 'Reparación de Equipos',
-                    'redes': 'Montaje de Redes',
-                    'impresoras': 'Soporte de Impresoras',
-                    'seguridad': 'Seguridad Informática',
-                    'errores': 'Detección de Errores',
-                    'soporte': 'Soporte Técnico General',
-                    'desarrollo_app': 'Programación de Aplicaciones Personalizadas',
-                    'desarrollo_web': 'Desarrollo de Entornos Web'
-                };
-                
-                document.getElementById('editTicketId').value = ticketId;
-                document.getElementById('editTicketNombre').value = ticket.nombre;
-                document.getElementById('editTicketEmail').value = ticket.email;
-                document.getElementById('editTicketTelefono').value = ticket.telefono;
-                document.getElementById('editTicketServicio').value = ticket.servicio;
-                document.getElementById('editTicketEmpresa').value = ticket.empresa_id || '';
-                document.getElementById('editTicketPrioridad').value = ticket.prioridad;
-                document.getElementById('editTicketEstado').value = ticket.estado;
-                document.getElementById('editTicketTecnico').value = ticket.tecnico_asignado || '';
-                document.getElementById('editTicketDescripcion').value = ticket.descripcion;
-                
-                document.getElementById('editTicketModal').style.display = 'block';
-            } catch (error) {
-                alert('Error al cargar el ticket: ' + error.message);
-            }
-        }
+        const result = await response.json();
 
-        // Save edited ticket
-        async function saveTicketEdit() {
-            const ticketId = document.getElementById('editTicketId').value;
-            const empresaId = document.getElementById('editTicketEmpresa').value;
-            
-            const ticketData = {
-                nombre: document.getElementById('editTicketNombre').value,
-                email: document.getElementById('editTicketEmail').value,
-                telefono: document.getElementById('editTicketTelefono').value,
-                servicio: document.getElementById('editTicketServicio').value,
-                empresa_id: empresaId ? parseInt(empresaId) : null,
-                prioridad: document.getElementById('editTicketPrioridad').value,
-                estado: document.getElementById('editTicketEstado').value,
-                tecnico_asignado: document.getElementById('editTicketTecnico').value,
-                descripcion: document.getElementById('editTicketDescripcion').value
-            };
-            
-            try {
-                const response = await fetch(`/api/tickets/${ticketId}`, {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json', 'csrf-token': csrfToken },
-                    body: JSON.stringify(ticketData)
-                });
-                
-                const result = await response.json();
-                
-                if (response.ok) {
-                    alert('Ticket actualizado exitosamente');
-                    document.getElementById('editTicketModal').style.display = 'none';
-                    loadTickets();
-                } else {
-                    alert('Error: ' + result.error);
-                }
-            } catch (error) {
-                alert('Error al actualizar ticket: ' + error.message);
-            }
-        }
-
-        // Archive ticket (soft delete)
-        async function deleteTicket(ticketId) {
-            if (!confirm(`¿Está seguro que desea archivar el ticket ${ticketId}? Se ocultará pero podrá recuperarse.`)) {
-                return;
-            }
-            
-            try {
-                const response = await fetch(`/api/tickets/${ticketId}`, {
-                    method: 'DELETE',
-                    headers: { 'csrf-token': csrfToken }
-                });
-                
-                const result = await response.json();
-                
-                if (response.ok) {
-                    alert('Ticket archivado exitosamente');
-                    loadTickets();
-                } else if (response.status === 403) {
-                    alert('Solo administradores pueden archivar tickets');
-                } else {
-                    alert('Error: ' + result.error);
-                }
-            } catch (error) {
-                alert('Error al archivar ticket: ' + error.message);
-            }
-        }
-
-        // Restore ticket from archive
-        async function restoreTicket(ticketId) {
-            try {
-                const response = await fetch(`/api/tickets/${ticketId}/restore`, {
-                    method: 'POST',
-                    headers: { 'csrf-token': csrfToken }
-                });
-                
-                const result = await response.json();
-                
-                if (response.ok) {
-                    alert('Ticket restaurado exitosamente');
-                    loadArchivedTickets();
-                } else {
-                    alert('Error: ' + result.error);
-                }
-            } catch (error) {
-                alert('Error al restaurar ticket: ' + error.message);
-            }
-        }
-
-        // Auto-refresh every 30 seconds
-        setInterval(loadTickets, 30000);
-
-        // Logout function
-        async function logout() {
-            if (confirm('¿Está seguro que desea cerrar sesión?')) {
-                try {
-                    await fetch('/api/logout', { method: 'POST', headers: { 'csrf-token': csrfToken } });
-                    window.location.href = '/login';
-                } catch (error) {
-                    console.error('Error al cerrar sesión:', error);
-                    window.location.href = '/login';
-                }
-            }
-        }
-
-        // Close modal functions
-        function closeEditTicketModal() {
+        if (response.ok) {
+            showNotification('Ticket actualizado exitosamente', 'success');
             document.getElementById('editTicketModal').style.display = 'none';
+            loadTickets();
+        } else {
+            showNotification('Error: ' + result.error, 'error');
         }
+    } catch (error) {
+        showNotification('Error al actualizar ticket: ' + error.message, 'error');
+    }
+}
 
-        function closeCreateTicketModal() {
+// Archive ticket (soft delete)
+async function deleteTicket(ticketId) {
+    const userConfirmed = await showConfirm(`¿Está seguro que desea archivar el ticket ${ticketId}? Se ocultará pero podrá recuperarse.`, 'Archivar Ticket');
+    if (!userConfirmed) return;
+
+    try {
+        const response = await fetch(`/api/tickets/${ticketId}`, {
+            method: 'DELETE',
+            headers: { 'csrf-token': csrfToken }
+        });
+
+        const result = await response.json();
+
+        if (response.ok) {
+            showNotification('Ticket archivado exitosamente', 'success');
+            loadTickets();
+        } else if (response.status === 403) {
+            showNotification('Solo administradores pueden archivar tickets', 'error');
+        } else {
+            showNotification('Error: ' + result.error, 'error');
+        }
+    } catch (error) {
+        showNotification('Error al archivar ticket: ' + error.message, 'error');
+    }
+}
+
+// Restore ticket from archive
+async function restoreTicket(ticketId) {
+    try {
+        const response = await fetch(`/api/tickets/${ticketId}/restore`, {
+            method: 'POST',
+            headers: { 'csrf-token': csrfToken }
+        });
+
+        const result = await response.json();
+
+        if (response.ok) {
+            showNotification('Ticket restaurado exitosamente', 'success');
+            loadArchivedTickets();
+        } else {
+            showNotification('Error: ' + result.error, 'error');
+        }
+    } catch (error) {
+        showNotification('Error al restaurar ticket: ' + error.message, 'error');
+    }
+}
+
+// Auto-refresh every 30 seconds
+setInterval(loadTickets, 30000);
+
+// Logout function
+async function logout() {
+    const userConfirmed = await showConfirm('¿Está seguro que desea cerrar sesión?', 'Cerrar Sesión');
+    if (userConfirmed) {
+        try {
+            await fetch('/api/logout', { method: 'POST', headers: { 'csrf-token': csrfToken } });
+
+            // Mostrar mensaje de éxito temporal
+            const logoutBtn = document.querySelector('button[onclick="logout()"]');
+            const originalContent = logoutBtn.innerHTML;
+            logoutBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Cerrando...';
+            logoutBtn.disabled = true;
+
+            showNotification('Sesión cerrada correctamente. Volviendo al login...', 'success');
+            window.location.href = '/login';
+        } catch (error) {
+            console.error('Error al cerrar sesión:', error);
+            window.location.href = '/login';
+        }
+    }
+}
+
+// Close modal functions
+function closeEditTicketModal() {
+    document.getElementById('editTicketModal').style.display = 'none';
+}
+
+function closeCreateTicketModal() {
+    document.getElementById('createTicketModal').style.display = 'none';
+}
+
+function openCreateTicketModal() {
+    document.getElementById('createTicketModal').style.display = 'block';
+}
+
+// Create new ticket
+async function saveNewTicket() {
+    const empresaId = document.getElementById('createTicketEmpresa').value;
+
+    const ticketData = {
+        nombre: document.getElementById('createTicketNombre').value,
+        email: document.getElementById('createTicketEmail').value,
+        telefono: document.getElementById('createTicketTelefono').value,
+        servicio: document.getElementById('createTicketServicio').value,
+        empresa_id: empresaId ? parseInt(empresaId) : null,
+        prioridad: document.getElementById('createTicketPrioridad').value,
+        descripcion: document.getElementById('createTicketDescripcion').value
+    };
+
+    try {
+        const response = await fetch('/api/tickets', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'csrf-token': csrfToken },
+            body: JSON.stringify(ticketData)
+        });
+
+        const result = await response.json();
+
+        if (response.ok) {
+            showNotification('Ticket creado exitosamente: ' + result.ticketId, 'success');
             document.getElementById('createTicketModal').style.display = 'none';
+            // ... reset form logic ...
+            loadTickets();
+        } else {
+            showNotification('Error: ' + result.error, 'error');
+        }
+    } catch (error) {
+        showNotification('Error al crear ticket: ' + error.message, 'error');
+    }
+}
+
+window.onclick = function (event) {
+    const ticketModal = document.getElementById('editTicketModal');
+    const createModal = document.getElementById('createTicketModal');
+    if (event.target === ticketModal) {
+        ticketModal.style.display = 'none';
+    }
+    if (event.target === createModal) {
+        createModal.style.display = 'none';
+    }
+}
+
+// ==================== GESTIÓN DE USUARIOS ====================
+
+function toggleUsersPanel() {
+    const panel = document.getElementById('usersPanel');
+    const isVisible = panel.style.display !== 'none';
+    panel.style.display = isVisible ? 'none' : 'block';
+
+    if (!isVisible) {
+        loadUsers();
+    }
+}
+
+function toggleBackupsPanel() {
+    const panel = document.getElementById('backupsPanel');
+    const isVisible = panel.style.display !== 'none';
+    panel.style.display = isVisible ? 'none' : 'block';
+
+    if (!isVisible) {
+        loadBackups();
+    }
+}
+
+async function loadBackups() {
+    try {
+        const response = await fetch('/api/backups');
+        const data = await response.json();
+        const backupsList = document.getElementById('backupsList');
+
+        if (!data.backups || data.backups.length === 0) {
+            backupsList.innerHTML = '<div style="text-align: center; padding: 2rem; color: #6b7280;">No hay backups disponibles</div>';
+            return;
         }
 
-        function openCreateTicketModal() {
-            document.getElementById('createTicketModal').style.display = 'block';
-        }
-
-        // Create new ticket
-        async function saveNewTicket() {
-            const empresaId = document.getElementById('createTicketEmpresa').value;
-            
-            const ticketData = {
-                nombre: document.getElementById('createTicketNombre').value,
-                email: document.getElementById('createTicketEmail').value,
-                telefono: document.getElementById('createTicketTelefono').value,
-                servicio: document.getElementById('createTicketServicio').value,
-                empresa_id: empresaId ? parseInt(empresaId) : null,
-                prioridad: document.getElementById('createTicketPrioridad').value,
-                descripcion: document.getElementById('createTicketDescripcion').value
-            };
-            
-            try {
-                const response = await fetch('/api/tickets', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'csrf-token': csrfToken },
-                    body: JSON.stringify(ticketData)
-                });
-                
-                const result = await response.json();
-                
-                if (response.ok) {
-                    alert('Ticket creado exitosamente: ' + result.ticketId);
-                    document.getElementById('createTicketModal').style.display = 'none';
-                    // Clear form
-                    document.getElementById('createTicketNombre').value = '';
-                    document.getElementById('createTicketEmail').value = '';
-                    document.getElementById('createTicketTelefono').value = '';
-                    document.getElementById('createTicketServicio').value = '';
-                    document.getElementById('createTicketPrioridad').value = 'media';
-                    document.getElementById('createTicketDescripcion').value = '';
-                    loadTickets();
-                } else {
-                    alert('Error: ' + result.error);
-                }
-            } catch (error) {
-                alert('Error al crear ticket: ' + error.message);
-            }
-        }
-
-        window.onclick = function(event) {
-            const ticketModal = document.getElementById('editTicketModal');
-            const createModal = document.getElementById('createTicketModal');
-            if (event.target === ticketModal) {
-                ticketModal.style.display = 'none';
-            }
-            if (event.target === createModal) {
-                createModal.style.display = 'none';
-            }
-        }
-
-        // ==================== GESTIÓN DE USUARIOS ====================
-
-        function toggleUsersPanel() {
-            const panel = document.getElementById('usersPanel');
-            const isVisible = panel.style.display !== 'none';
-            panel.style.display = isVisible ? 'none' : 'block';
-            
-            if (!isVisible) {
-                loadUsers();
-            }
-        }
-
-        function toggleBackupsPanel() {
-            const panel = document.getElementById('backupsPanel');
-            const isVisible = panel.style.display !== 'none';
-            panel.style.display = isVisible ? 'none' : 'block';
-            
-            if (!isVisible) {
-                loadBackups();
-            }
-        }
-
-        async function loadBackups() {
-            try {
-                const response = await fetch('/api/backups');
-                const data = await response.json();
-                const backupsList = document.getElementById('backupsList');
-                
-                if (!data.backups || data.backups.length === 0) {
-                    backupsList.innerHTML = '<div style="text-align: center; padding: 2rem; color: #6b7280;">No hay backups disponibles</div>';
-                    return;
-                }
-                
-                backupsList.innerHTML = data.backups.map(backup => `
+        backupsList.innerHTML = data.backups.map(backup => `
                     <div style="border: 1px solid #e5e7eb; border-radius: 8px; padding: 1rem; background: white;">
                         <div style="display: flex; justify-content: space-between; align-items: start;">
                             <div style="flex: 1;">
@@ -2108,128 +2189,151 @@ let allTickets = [];
                                 <button onclick="downloadBackup('${backup.name}')" class="btn-primary" style="padding: 0.5rem 1rem; font-size: 0.875rem;">
                                     <i class="fas fa-download"></i> Descargar
                                 </button>
-                                <button onclick="deleteBackup('${backup.name}')" class="btn-danger" style="padding: 0.5rem 1rem; font-size: 0.875rem; background: #ef4444; border: none; color: white; border-radius: 5px; cursor: pointer;">
+                                <button onclick="deleteBackup('${backup.name}', event)" class="btn-danger" style="padding: 0.5rem 1rem; font-size: 0.875rem; background: #ef4444; border: none; color: white; border-radius: 5px; cursor: pointer;">
                                     <i class="fas fa-trash"></i> Eliminar
                                 </button>
                             </div>
                         </div>
                     </div>
                 `).join('');
-            } catch (error) {
-                console.error('Error cargando backups:', error);
-                document.getElementById('backupsList').innerHTML = '<div style="color: #ef4444;">Error al cargar backups</div>';
-            }
+    } catch (error) {
+        console.error('Error cargando backups:', error);
+        document.getElementById('backupsList').innerHTML = '<div style="color: #ef4444;">Error al cargar backups</div>';
+    }
+}
+
+async function createBackupNow(event) {
+    if (event) {
+        event.preventDefault();
+        event.stopPropagation();
+    }
+
+    const userConfirmed = await showConfirm('¿Deseas crear una copia de seguridad de todos los datos ahora?', 'Crear Backup');
+    if (!userConfirmed) return;
+
+    const btn = event ? event.currentTarget : null;
+
+    try {
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Creando...';
         }
 
-        async function createBackupNow() {
-            if (!confirm('¿Crear una copia de seguridad ahora?')) return;
-            
-            try {
-                const btn = event.target;
-                btn.disabled = true;
-                btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Creando...';
-                
-                const response = await fetch('/api/backups/create', { method: 'POST', headers: { 'csrf-token': csrfToken } });
-                const data = await response.json();
-                
-                if (data.success) {
-                    alert('✅ Backup creado: ' + data.backup.name);
-                    loadBackups();
-                } else {
-                    alert('❌ Error: ' + data.error);
-                }
-            } catch (error) {
-                alert('Error: ' + error.message);
-            } finally {
-                const btn = event.target;
-                btn.disabled = false;
-                btn.innerHTML = '<i class="fas fa-plus"></i> Crear Backup Ahora';
-            }
-        }
+        const response = await fetch('/api/backups/create', { method: 'POST', headers: { 'csrf-token': csrfToken } });
+        const data = await response.json();
 
-        function downloadBackup(filename) {
-            const link = document.createElement('a');
-            link.href = `/api/backups/download/${filename}`;
-            link.download = filename;
-            link.click();
-        }
+        // Add delay before showing result
+        await new Promise(resolve => setTimeout(resolve, 300));
 
-        async function deleteBackup(filename) {
-            if (!confirm(`¿Eliminar el backup ${filename}?`)) return;
-            
-            try {
-                const response = await fetch(`/api/backups/${filename}`, { method: 'DELETE', headers: { 'csrf-token': csrfToken } });
-                const data = await response.json();
-                
-                if (data.success) {
-                    alert('✅ Backup eliminado');
-                    loadBackups();
-                } else {
-                    alert('❌ Error: ' + data.error);
-                }
-            } catch (error) {
-                alert('Error: ' + error.message);
-            }
+        if (data.success) {
+            const message = `Archivo: ${data.backup.name}\nTamaño: ${data.backup.sizeReadable}\n\n${data.note || ''}`;
+            showNotification(message, 'success', 0, 'Backup Creado');
+            loadBackups();
+        } else {
+            showNotification(data.error || 'Error desconocido', 'error', 0);
         }
-
-        async function uploadBackup(event) {
-            const file = event.target.files[0];
-            if (!file) return;
-            
-            if (!file.name.endsWith('.tar.gz')) {
-                alert('❌ El archivo debe ser .tar.gz');
-                return;
-            }
-            
-            const formData = new FormData();
-            formData.append('backupFile', file);
-            
-            try {
-                const response = await fetch('/api/backups/restore', {
-                    method: 'POST',
-                    headers: { 'csrf-token': csrfToken },
-                    body: formData
-                });
-                const data = await response.json();
-                
-                if (data.success) {
-                    alert(`✅ Backup subido: ${file.name}\n\nPara restaurar, ejecuta en el servidor: node restore.js`);
-                    loadBackups();
-                } else {
-                    alert('❌ Error: ' + data.error);
-                }
-            } catch (error) {
-                alert('Error: ' + error.message);
-            }
-            
-            // Limpiar input
-            document.getElementById('backupFileInput').value = '';
+    } catch (error) {
+        showNotification(error.message, 'error', 0);
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-plus"></i> Crear Backup Ahora';
         }
+    }
+}
 
-        async function loadUsers() {
-            try {
-                const response = await fetch('/api/usuarios');
-                const users = await response.json();
-                
-                const tbody = document.getElementById('usersTableBody');
-                
-                if (users.length === 0) {
-                    tbody.innerHTML = `
+function downloadBackup(filename) {
+    const link = document.createElement('a');
+    link.href = `/api/backups/download/${filename}`;
+    link.download = filename;
+    link.click();
+}
+
+async function deleteBackup(filename, event) {
+    if (event) {
+        event.preventDefault();
+        event.stopPropagation();
+    }
+
+    const userConfirmed = await showConfirm(`¿Estás seguro de que deseas eliminar permanentemente el backup "${filename}"?`, 'Eliminar Backup');
+    if (!userConfirmed) return;
+
+    try {
+        const response = await fetch(`/api/backups/${filename}`, { method: 'DELETE', headers: { 'csrf-token': csrfToken } });
+        const data = await response.json();
+
+        await new Promise(resolve => setTimeout(resolve, 100));
+
+        if (data.success) {
+            showNotification('✅ Backup eliminado', 'success');
+            loadBackups();
+        } else {
+            showNotification('❌ Error: ' + data.error, 'error');
+        }
+    } catch (error) {
+        showNotification('Error: ' + error.message, 'error');
+    }
+}
+
+async function uploadBackup(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    if (!file.name.endsWith('.tar.gz')) {
+        showNotification('❌ El archivo debe ser .tar.gz', 'warning');
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append('backupFile', file);
+
+    try {
+        const response = await fetch('/api/backups/restore', {
+            method: 'POST',
+            headers: { 'csrf-token': csrfToken },
+            body: formData
+        });
+        const data = await response.json();
+
+        if (data.success) {
+            showNotification(`✅ Backup subido: ${file.name}\n\nPara restaurar, ejecuta en el servidor: node restore.js`, 'success', 0);
+            loadBackups();
+        } else {
+            showNotification('❌ Error: ' + data.error, 'error');
+        }
+    } catch (error) {
+        showNotification('Error: ' + error.message, 'error');
+    }
+
+    // Limpiar input
+    document.getElementById('backupFileInput').value = '';
+}
+
+async function loadUsers() {
+    try {
+        const response = await fetch('/api/usuarios');
+        const users = await response.json();
+
+        const tbody = document.getElementById('usersTableBody');
+
+        if (users.length === 0) {
+            tbody.innerHTML = `
                         <tr>
-                            <td colspan="7" style="text-align: center; padding: 2rem; color: #6b7280;">
+                            <td colspan="8" style="text-align: center; padding: 2rem; color: #6b7280;">
                                 No hay usuarios registrados
                             </td>
                         </tr>
                     `;
-                    applyPermissions();
-                    return;
-                }
-                
-                tbody.innerHTML = users.map(user => `
+            applyPermissions();
+            return;
+        }
+
+        tbody.innerHTML = users.map(user => `
                     <tr>
                         <td><strong>${user.username}</strong></td>
                         <td>${user.nombre_completo || '-'}</td>
                         <td>${user.email || '-'}</td>
+                        <td>${user.whatsapp || '-'}</td>
                         <td>
                             <span class="badge badge-${user.rol === 'admin' ? 'admin' : 'tecnico'}">
                                 ${user.rol === 'admin' ? 'Administrador' : 'Técnico'}
@@ -2253,206 +2357,604 @@ let allTickets = [];
                         </td>
                     </tr>
                 `).join('');
-                applyPermissions();
-            } catch (error) {
-                console.error('Error cargando usuarios:', error);
-                alert('Error al cargar usuarios');
+        applyPermissions();
+    } catch (error) {
+        console.error('Error cargando usuarios:', error);
+        showNotification('Error al cargar usuarios', 'error');
+    }
+}
+
+function showUserForm(user = null) {
+    const container = document.getElementById('userFormContainer');
+    const form = document.getElementById('userForm');
+    const title = document.getElementById('formTitle');
+
+    container.style.display = 'block';
+
+    if (user) {
+        title.textContent = 'Editar Usuario';
+        document.getElementById('userId').value = user.id;
+        document.getElementById('username').value = user.username;
+        document.getElementById('username').disabled = true;
+        document.getElementById('password').value = '';
+        document.getElementById('password').required = false;
+        document.getElementById('nombreCompleto').value = user.nombre_completo || '';
+        document.getElementById('email').value = user.email || '';
+        document.getElementById('whatsapp').value = user.whatsapp || '';
+        document.getElementById('rol').value = user.rol;
+        document.getElementById('activo').value = user.activo;
+    } else {
+        title.textContent = 'Nuevo Usuario';
+        form.reset();
+        document.getElementById('username').disabled = false;
+        document.getElementById('password').required = true;
+        document.getElementById('nombreCompleto').value = '';
+        document.getElementById('email').value = '';
+        document.getElementById('whatsapp').value = '';
+        document.getElementById('rol').value = 'tecnico';
+        document.getElementById('activo').value = '1';
+    }
+}
+
+function cancelUserForm() {
+    document.getElementById('userFormContainer').style.display = 'none';
+    document.getElementById('userForm').reset();
+}
+
+async function saveUser(event) {
+    event.preventDefault();
+
+    const userId = document.getElementById('userId').value;
+    const username = document.getElementById('username').value;
+    const password = document.getElementById('password').value;
+    const nombre_completo = document.getElementById('nombreCompleto').value;
+    const email = document.getElementById('email').value;
+    const whatsapp = document.getElementById('whatsapp').value;
+    const rol = document.getElementById('rol').value;
+    const activo = parseInt(document.getElementById('activo').value);
+
+    const userData = { username, nombre_completo, email, whatsapp, rol, activo };
+
+    // Si no hay contraseña en edición, no enviarla
+    if (userId && !password) {
+        // Do nothing, password won't be included in userData if not provided
+    } else {
+        userData.password = password;
+    }
+
+    try {
+        const url = userId ? `/api/usuarios/${userId}` : '/api/usuarios';
+        const method = userId ? 'PUT' : 'POST';
+
+        const response = await fetch(url, {
+            method: method,
+            headers: {
+                'Content-Type': 'application/json',
+                'csrf-token': csrfToken
+            },
+            body: JSON.stringify(userData)
+        });
+
+        const result = await response.json();
+
+        await new Promise(resolve => setTimeout(resolve, 100));
+
+        if (response.ok) {
+            showNotification(result.message || 'Usuario guardado exitosamente', 'success');
+            cancelUserForm();
+            loadUsers();
+        } else {
+            showNotification(result.error || 'Error al guardar usuario', 'error');
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        showNotification('Error al guardar usuario', 'error');
+    }
+}
+
+async function editUser(id) {
+    try {
+        const response = await fetch('/api/usuarios');
+        const users = await response.json();
+        const user = users.find(u => u.id === id);
+
+        if (user) {
+            showUserForm(user);
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        showNotification('Error al cargar usuario', 'error');
+    }
+}
+
+async function deleteUser(id, username) {
+    const userConfirmed = await showConfirm(`¿Estás seguro de eliminar al usuario "${username}"?`, 'Eliminar Usuario');
+    if (!userConfirmed) return;
+
+    try {
+        const response = await fetch(`/api/usuarios/${id}`, {
+            method: 'DELETE',
+            headers: { 'csrf-token': csrfToken }
+        });
+
+        const result = await response.json();
+
+        // Add delay before showing result
+        await new Promise(resolve => setTimeout(resolve, 100));
+
+        if (response.ok) {
+            showNotification(result.message || 'Usuario eliminado exitosamente', 'success');
+            loadUsers();
+        } else {
+            showNotification(result.error || 'Error al eliminar usuario', 'error');
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        showNotification('Error al eliminar usuario', 'error');
+    }
+}
+
+// Transfer Empresa Modal Functions
+async function showTransferirEmpresaModal(ticketId, currentEmpresaId, currentEmpresaName) {
+    try {
+        // Load empresas for the dropdown
+        const response = await fetch('/api/empresas');
+        const empresas = await response.json();
+
+        // Set current empresa info
+        document.getElementById('currentEmpresaName').value = currentEmpresaName || 'Sin empresa asignada';
+        document.getElementById('transferTicketId').value = ticketId;
+
+        // Populate empresa dropdown (exclude current empresa)
+        const targetSelect = document.getElementById('targetEmpresaId');
+        targetSelect.innerHTML = '<option value="">Seleccionar empresa...</option>';
+
+        empresas.forEach(empresa => {
+            if (empresa.activo && empresa.id !== currentEmpresaId) {
+                const option = document.createElement('option');
+                option.value = empresa.id;
+                option.textContent = empresa.nombre;
+                targetSelect.appendChild(option);
             }
+        });
+
+        // Show modal
+        document.getElementById('transferEmpresaModal').style.display = 'flex';
+    } catch (error) {
+        console.error('Error:', error);
+        showNotification('Error al cargar empresas', 'error');
+    }
+}
+
+function closeTransferEmpresaModal() {
+    const modal = document.getElementById('transferEmpresaModal');
+    if (modal) {
+        modal.style.display = 'none';
+        document.getElementById('targetEmpresaId').value = '';
+        document.getElementById('transferTicketId').value = '';
+    }
+}
+
+async function transferirTicketEmpresa() {
+    const ticketId = document.getElementById('transferTicketId').value;
+    const nuevaEmpresaId = document.getElementById('targetEmpresaId').value;
+
+    if (!nuevaEmpresaId) {
+        showNotification('Por favor selecciona una empresa destino', 'warning');
+        return;
+    }
+
+    try {
+        const response = await fetch(`/api/tickets/${ticketId}/transferir-empresa`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'csrf-token': csrfToken
+            },
+            body: JSON.stringify({ empresa_id: parseInt(nuevaEmpresaId) })
+        });
+
+        const result = await response.json();
+
+        if (response.ok) {
+            showNotification(result.message || 'Ticket transferido exitosamente', 'success');
+            closeTransferEmpresaModal();
+            setTimeout(() => {
+                closeModal();
+                loadTickets(); // Refresh tickets list
+            }, 100);
+        } else {
+            showNotification(result.error || 'Error al transferir ticket', 'error');
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        showNotification('Error al transferir ticket', 'error');
+    }
+}
+
+// Calendar Panel Functions
+function toggleCalendarPanel() {
+    const panel = document.getElementById('calendarPanel');
+    if (panel.style.display === 'none') {
+        // Hide other panels
+        document.getElementById('usersPanel').style.display = 'none';
+        document.getElementById('backupsPanel').style.display = 'none';
+        document.getElementById('servicesPanel').style.display = 'none';
+        document.getElementById('materialsPanel').style.display = 'none';
+        document.getElementById('empresasPanel').style.display = 'none';
+
+        panel.style.display = 'block';
+        loadAppointments();
+    } else {
+        panel.style.display = 'none';
+    }
+}
+
+async function loadAppointments() {
+    const calendarView = document.getElementById('calendarView');
+    calendarView.innerHTML = '<div class="loading"><i class="fas fa-spinner fa-spin"></i> Cargando agenda...</div>';
+
+    try {
+        const response = await fetch('/api/appointments', {
+            headers: { 'csrf-token': csrfToken }
+        });
+        const appointments = await response.json();
+
+        if (appointments.length === 0) {
+            calendarView.innerHTML = '<div style="text-align: center; padding: 2rem; color: #6b7280;">No hay citas programadas</div>';
+            return;
         }
 
-        function showUserForm(user = null) {
-            const container = document.getElementById('userFormContainer');
-            const form = document.getElementById('userForm');
-            const title = document.getElementById('formTitle');
-            
-            container.style.display = 'block';
-            
-            if (user) {
-                title.textContent = 'Editar Usuario';
-                document.getElementById('userId').value = user.id;
-                document.getElementById('username').value = user.username;
-                document.getElementById('username').disabled = true;
-                document.getElementById('password').value = '';
-                document.getElementById('password').required = false;
-                document.getElementById('nombreCompleto').value = user.nombre_completo || '';
-                document.getElementById('email').value = user.email || '';
-                document.getElementById('rol').value = user.rol;
-                document.getElementById('activo').value = user.activo;
+        const html = `
+            <table class="users-table">
+                <thead>
+                    <tr>
+                        <th>Fecha y Hora</th>
+                        <th>Cliente</th>
+                        <th>Técnico</th>
+                        <th>Descripción</th>
+                        <th>Estado</th>
+                        <th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${appointments.map(cita => `
+                        <tr>
+                            <td><strong>${new Date(cita.fecha_cita).toLocaleString('es-ES')}</strong></td>
+                            <td>${cita.cliente_nombre}</td>
+                            <td>${cita.tecnico_nombre || 'Asignado'}</td>
+                            <td>${cita.descripcion || '-'}</td>
+                            <td><span class="badge badge-${cita.estado}">${cita.estado}</span></td>
+                            <td>
+                                <div style="display: flex; gap: 0.5rem;">
+                                    <button class="btn-sm" onclick="showTicketFromAppointment('${cita.ticket_id}')" title="Ver Ticket">
+                                        <i class="fas fa-external-link-alt"></i>
+                                    </button>
+                                    ${currentUserRole === 'admin' ? `
+                                        <button class="btn-sm" style="background-color: #ef4444;" onclick="deleteAppointment(${cita.id})" title="Eliminar">
+                                            <i class="fas fa-trash"></i>
+                                        </button>
+                                    ` : ''}
+                                </div>
+                            </td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        `;
+        calendarView.innerHTML = html;
+    } catch (error) {
+        console.error('Error:', error);
+        calendarView.innerHTML = '<div class="error">Error al cargar la agenda</div>';
+    }
+}
+
+function showTicketFromAppointment(ticketId) {
+    toggleCalendarPanel();
+    viewTicket(ticketId);
+}
+
+async function deleteAppointment(id) {
+    const userConfirmed = await showConfirm('¿Seguro que deseas eliminar esta cita?', 'Eliminar Cita');
+    if (!userConfirmed) return;
+
+    try {
+        const response = await fetch(`/api/appointments/${id}`, {
+            method: 'DELETE',
+            headers: { 'csrf-token': csrfToken }
+        });
+
+        await new Promise(resolve => setTimeout(resolve, 100));
+
+        if (response.ok) {
+            loadAppointments();
+        } else {
+            showNotification('Error al eliminar cita', 'error');
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        showNotification('Error al eliminar cita', 'error');
+    }
+}
+
+// Appointment Creation Functions
+async function showAddAppointmentModal(ticketId) {
+    try {
+        const response = await fetch('/api/usuarios');
+        const users = await response.json();
+        const technicians = users.filter(u => u.activo);
+
+
+        const modalHtml = `
+            <div id="appointmentModal" class="modal active">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h2>Agendar Nueva Cita</h2>
+                        <button class="close-modal" onclick="closeAppointmentModal()"><i class="fas fa-times"></i></button>
+                    </div>
+                    <div class="modal-body">
+                        <form onsubmit="event.preventDefault(); saveAppointment();">
+                            <input type="hidden" id="appoTicketId" value="${ticketId}">
+                            <div class="form-group">
+                                <label>Técnico *</label>
+                                <select id="appoTecnicoId" required>
+                                    <option value="">Seleccionar técnico...</option>
+                                    ${technicians.map(t => `<option value="${t.id}">${t.nombre_completo || t.username}</option>`).join('')}
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Fecha y Hora *</label>
+                                <input type="datetime-local" id="appoFecha" required>
+                            </div>
+                            <div class="form-group">
+                                <label>Descripción / Notas</label>
+                                <textarea id="appoDescripcion" rows="3" placeholder="Detalles de la visita..."></textarea>
+                            </div>
+                            <div style="display: flex; gap: 1rem; justify-content: flex-end; margin-top: 1.5rem;">
+                                <button type="button" class="btn" style="background: #6b7280;" onclick="closeAppointmentModal()">Cancelar</button>
+                                <button type="submit" class="btn" style="background: #3b82f6;">
+                                    <i class="fas fa-save"></i> Guardar y Notificar WhatsApp
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        let modalContainer = document.getElementById('tempModalContainer');
+        if (!modalContainer) {
+            modalContainer = document.createElement('div');
+            modalContainer.id = 'tempModalContainer';
+            document.body.appendChild(modalContainer);
+        }
+        modalContainer.innerHTML = modalHtml;
+
+    } catch (error) {
+        console.error('Error:', error);
+        showNotification('Error al cargar técnicos', 'error');
+    }
+}
+
+function closeAppointmentModal() {
+    const modal = document.getElementById('appointmentModal');
+    if (modal) modal.remove();
+}
+
+async function saveAppointment() {
+    const ticket_id = document.getElementById('appoTicketId').value;
+    const tecnico_id = document.getElementById('appoTecnicoId').value;
+    const fecha_cita = document.getElementById('appoFecha').value;
+    const descripcion = document.getElementById('appoDescripcion').value;
+
+    try {
+        const response = await fetch('/api/appointments', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'csrf-token': csrfToken
+            },
+            body: JSON.stringify({ ticket_id, tecnico_id, fecha_cita, descripcion })
+        });
+
+        if (response.ok) {
+            showNotification('Cita agendada y notificación WhatsApp enviada al técnico.', 'success');
+            closeAppointmentModal();
+            loadAppointments(); // Refresh calendar if open
+        } else {
+            const err = await response.json();
+            showNotification('Error: ' + err.error, 'error');
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        showNotification('Error al guardar la cita', 'error');
+    }
+}
+
+// ==================== FACTURAS MANAGEMENT ====================
+
+function toggleFacturasPanel() {
+    const panel = document.getElementById('facturasPanel');
+    const isVisible = panel.style.display !== 'none';
+
+    // Hide all other panels
+    document.querySelectorAll('.users-panel, .services-panel, .materials-panel, .calendar-panel').forEach(p => {
+        if (p.id !== 'facturasPanel') p.style.display = 'none';
+    });
+
+    if (isVisible) {
+        panel.style.display = 'none';
+    } else {
+        panel.style.display = 'block';
+        loadFacturas();
+    }
+}
+
+async function loadFacturas() {
+    try {
+        const response = await fetch('/api/facturas', {
+            headers: { 'csrf-token': csrfToken }
+        });
+        const facturas = await response.json();
+
+        const tableBody = document.getElementById('facturasTableBody');
+
+        if (facturas.length === 0) {
+            tableBody.innerHTML = `
+                <tr>
+                    <td colspan="9" style="text-align: center; padding: 2rem; color: #6b7280;">
+                        No hay facturas registradas
+                    </td>
+                </tr>
+            `;
+            return;
+        }
+
+        tableBody.innerHTML = facturas.map(factura => {
+            const hasVerifactu = factura.hash ? true : false;
+            const isPresentada = factura.presentada === 1;
+            const isBloqueada = factura.bloqueada === 1;
+
+            // Estado badge
+            let estadoBadge = '';
+            if (factura.estado === 'pagada') {
+                estadoBadge = '<span class="badge badge-active">Pagada</span>';
+            } else if (factura.estado === 'anulada') {
+                estadoBadge = '<span class="badge badge-inactive">Anulada</span>';
             } else {
-                title.textContent = 'Nuevo Usuario';
-                form.reset();
-                document.getElementById('username').disabled = false;
-                document.getElementById('password').required = true;
-                document.getElementById('activo').value = '1';
-                document.getElementById('rol').value = 'tecnico';
+                estadoBadge = '<span class="badge" style="background: #f59e0b;">Pendiente</span>';
             }
-        }
 
-        function cancelUserForm() {
-            document.getElementById('userFormContainer').style.display = 'none';
-            document.getElementById('userForm').reset();
-        }
+            // Veri*Factu badge
+            const verifactuBadge = hasVerifactu
+                ? '<span class="badge badge-active"><i class="fas fa-check-circle"></i> Sí</span>'
+                : '<span class="badge badge-inactive"><i class="fas fa-times-circle"></i> No</span>';
 
-        async function saveUser(event) {
-            event.preventDefault();
-            
-            const userId = document.getElementById('userId').value;
-            const data = {
-                username: document.getElementById('username').value,
-                password: document.getElementById('password').value,
-                nombre_completo: document.getElementById('nombreCompleto').value,
-                email: document.getElementById('email').value,
-                rol: document.getElementById('rol').value,
-                activo: parseInt(document.getElementById('activo').value)
-            };
-            
-            // Si no hay contraseña en edición, no enviarla
-            if (userId && !data.password) {
-                delete data.password;
-            }
-            
-            try {
-                const url = userId ? `/api/usuarios/${userId}` : '/api/usuarios';
-                const method = userId ? 'PUT' : 'POST';
-                
-                const response = await fetch(url, {
-                    method: method,
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'csrf-token': csrfToken
-                    },
-                    body: JSON.stringify(data)
-                });
-                
-                const result = await response.json();
-                
-                if (response.ok) {
-                    alert(result.message || 'Usuario guardado exitosamente');
-                    cancelUserForm();
-                    loadUsers();
-                } else {
-                    alert(result.error || 'Error al guardar usuario');
-                }
-            } catch (error) {
-                console.error('Error:', error);
-                alert('Error al guardar usuario');
-            }
-        }
+            // Presentada badge
+            const presentadaBadge = isPresentada
+                ? '<span class="badge badge-active"><i class="fas fa-lock"></i> Sí</span>'
+                : '<span class="badge badge-inactive">No</span>';
 
-        async function editUser(id) {
-            try {
-                const response = await fetch('/api/usuarios');
-                const users = await response.json();
-                const user = users.find(u => u.id === id);
-                
-                if (user) {
-                    showUserForm(user);
-                }
-            } catch (error) {
-                console.error('Error:', error);
-                alert('Error al cargar usuario');
-            }
-        }
+            // Action buttons
+            let actionButtons = `
+                <button class="btn-icon btn-view" onclick="viewInvoice('${factura.factura_id}')" title="Ver factura">
+                    <i class="fas fa-eye"></i>
+                </button>
+            `;
 
-        async function deleteUser(id, username) {
-            if (!confirm(`¿Estás seguro de eliminar al usuario "${username}"?`)) {
-                return;
+            if (!isBloqueada) {
+                actionButtons += `
+                    <button class="btn-icon btn-delete" onclick="deleteFactura('${factura.factura_id}')" title="Eliminar factura">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                `;
+            } else {
+                actionButtons += `
+                    <button class="btn-icon" style="background: #9ca3af; cursor: not-allowed;" disabled title="Factura bloqueada">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                `;
             }
-            
-            try {
-                const response = await fetch(`/api/usuarios/${id}`, {
-                    method: 'DELETE',
-                    headers: { 'csrf-token': csrfToken }
-                });
-                
-                const result = await response.json();
-                
-                if (response.ok) {
-                    alert(result.message || 'Usuario eliminado exitosamente');
-                    loadUsers();
-                } else {
-                    alert(result.error || 'Error al eliminar usuario');
-                }
-            } catch (error) {
-                console.error('Error:', error);
-                alert('Error al eliminar usuario');
-            }
-        }
 
-        // Transfer Empresa Modal Functions
-        async function showTransferirEmpresaModal(ticketId, currentEmpresaId, currentEmpresaName) {
-            try {
-                // Load empresas for the dropdown
-                const response = await fetch('/api/empresas');
-                const empresas = await response.json();
-                
-                // Set current empresa info
-                document.getElementById('currentEmpresaName').value = currentEmpresaName || 'Sin empresa asignada';
-                document.getElementById('transferTicketId').value = ticketId;
-                
-                // Populate empresa dropdown (exclude current empresa)
-                const targetSelect = document.getElementById('targetEmpresaId');
-                targetSelect.innerHTML = '<option value="">Seleccionar empresa...</option>';
-                
-                empresas.forEach(empresa => {
-                    if (empresa.activo && empresa.id !== currentEmpresaId) {
-                        const option = document.createElement('option');
-                        option.value = empresa.id;
-                        option.textContent = empresa.nombre;
-                        targetSelect.appendChild(option);
-                    }
-                });
-                
-                // Show modal
-                document.getElementById('transferEmpresaModal').style.display = 'flex';
-            } catch (error) {
-                console.error('Error:', error);
-                alert('Error al cargar empresas');
+            if (hasVerifactu && !isPresentada) {
+                actionButtons += `
+                    <button class="btn-icon" style="background: #dc2626;" onclick="presentarFactura('${factura.factura_id}')" title="Presentar factura">
+                        <i class="fas fa-paper-plane"></i>
+                    </button>
+                `;
             }
-        }
 
-        function closeTransferEmpresaModal() {
-            const modal = document.getElementById('transferEmpresaModal');
-            if (modal) {
-                modal.style.display = 'none';
-                document.getElementById('targetEmpresaId').value = '';
-                document.getElementById('transferTicketId').value = '';
-            }
-        }
+            return `
+                <tr style="${isBloqueada ? 'background: #f9fafb;' : ''}">
+                    <td style="font-family: monospace; font-weight: 600;">
+                        ${factura.factura_id}
+                        ${isBloqueada ? '<i class="fas fa-lock" style="color: #dc2626; margin-left: 0.5rem;" title="Bloqueada"></i>' : ''}
+                    </td>
+                    <td>${factura.ticket_id}</td>
+                    <td>${factura.cliente_nombre || '-'}</td>
+                    <td>${factura.empresa_nombre || '-'}</td>
+                    <td style="font-weight: 600;">${factura.total.toFixed(2)} €</td>
+                    <td>${estadoBadge}</td>
+                    <td>${verifactuBadge}</td>
+                    <td>${presentadaBadge}</td>
+                    <td class="user-actions">${actionButtons}</td>
+                </tr>
+            `;
+        }).join('');
 
-        async function transferirTicketEmpresa() {
-            const ticketId = document.getElementById('transferTicketId').value;
-            const nuevaEmpresaId = document.getElementById('targetEmpresaId').value;
-            
-            if (!nuevaEmpresaId) {
-                alert('Por favor selecciona una empresa destino');
-                return;
+    } catch (error) {
+        console.error('Error loading facturas:', error);
+        showNotification('Error al cargar las facturas', 'error');
+    }
+}
+
+function presentarFactura(facturaId) {
+    document.getElementById('facturaIdToPresent').value = facturaId;
+    document.getElementById('confirmFacturaId').value = '';
+    document.getElementById('presentarFacturaModal').style.display = 'block';
+}
+
+function closePresentarFacturaModal() {
+    document.getElementById('presentarFacturaModal').style.display = 'none';
+    document.getElementById('confirmFacturaId').value = '';
+    document.getElementById('facturaIdToPresent').value = '';
+}
+
+async function confirmarPresentacion() {
+    const facturaId = document.getElementById('facturaIdToPresent').value;
+    const confirmId = document.getElementById('confirmFacturaId').value.trim();
+
+    if (confirmId !== facturaId) {
+        showNotification('❌ El número de factura no coincide. Por favor, escríbelo correctamente.', 'warning');
+        return;
+    }
+
+    try {
+        const response = await fetch(`/api/facturas/${facturaId}/presentar`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+                'csrf-token': csrfToken
             }
-            
-            try {
-                const response = await fetch(`/api/tickets/${ticketId}/transferir-empresa`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'csrf-token': csrfToken
-                    },
-                    body: JSON.stringify({ empresa_id: parseInt(nuevaEmpresaId) })
-                });
-                
-                const result = await response.json();
-                
-                if (response.ok) {
-                    alert(result.message || 'Ticket transferido exitosamente');
-                    closeTransferEmpresaModal();
-                    setTimeout(() => {
-                        closeModal();
-                        loadTickets(); // Refresh tickets list
-                    }, 100);
-                } else {
-                    alert(result.error || 'Error al transferir ticket');
-                }
-            } catch (error) {
-                console.error('Error:', error);
-                alert('Error al transferir ticket');
-            }
+        });
+
+        const result = await response.json();
+
+        if (response.ok) {
+            showNotification('✅ Factura presentada y bloqueada exitosamente. Ya no puede ser modificada ni eliminada.', 'success', 0);
+            closePresentarFacturaModal();
+            loadFacturas();
+        } else {
+            showNotification('❌ Error: ' + result.error, 'error');
         }
+    } catch (error) {
+        console.error('Error presentando factura:', error);
+        showNotification('Error al presentar la factura', 'error');
+    }
+}
+
+async function deleteFactura(facturaId) {
+    const userConfirmed = await showConfirm(`¿Estás seguro de que deseas eliminar la factura ${facturaId}?\n\nEsta acción no se puede deshacer.`, 'Eliminar Factura');
+    if (!userConfirmed) return;
+
+    try {
+        const response = await fetch(`/api/facturas/${facturaId}`, {
+            method: 'DELETE',
+            headers: {
+                'csrf-token': csrfToken
+            }
+        });
+
+        const result = await response.json();
+
+        if (response.ok) {
+            showNotification('✅ Factura eliminada exitosamente', 'success');
+            loadFacturas();
+        } else {
+            showNotification('❌ Error: ' + result.error, 'error');
+        }
+    } catch (error) {
+        console.error('Error eliminando factura:', error);
+        showNotification('Error al eliminar la factura', 'error');
+    }
+}
