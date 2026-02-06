@@ -48,15 +48,28 @@ document.addEventListener('DOMContentLoaded', getCsrfToken);
 
 ticketForm.addEventListener('submit', async (e) => {
     e.preventDefault();
-    
+
     // Get form data
+    const nombre = document.getElementById('nombre').value;
+    const email = document.getElementById('email').value;
+    const telefono = document.getElementById('telefono').value;
+    const servicio = document.getElementById('servicio').value;
+    const descripcion = document.getElementById('descripcion').value;
+
+    if (!nombre || !email || !telefono || !servicio || !descripcion) {
+        mensaje.className = 'mensaje error';
+        mensaje.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Por favor complete todos los campos marcados con *';
+        mensaje.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        return;
+    }
+
     const formData = {
-        nombre: document.getElementById('nombre').value,
-        email: document.getElementById('email').value,
-        telefono: document.getElementById('telefono').value,
-        servicio: document.getElementById('servicio').value,
+        nombre,
+        email,
+        telefono,
+        servicio,
         prioridad: document.getElementById('prioridad').value,
-        descripcion: document.getElementById('descripcion').value
+        descripcion
     };
 
     // Disable submit button
@@ -81,7 +94,7 @@ ticketForm.addEventListener('submit', async (e) => {
             const whatsappConsulta = `https://wa.me/34654892803?text=Hola,%20tengo%20el%20ticket%20${data.ticketId}%20y%20necesito%20consultar%20el%20estado`;
             const whatsappCierre = `https://wa.me/34654892803?text=Hola,%20tengo%20el%20ticket%20${data.ticketId}%20y%20ya%20está%20resuelto.%20Por%20favor,%20pueden%20cerrarlo`;
             const whatsappGeneral = `https://wa.me/34654892803?text=Hola,%20tengo%20una%20consulta%20sobre%20mi%20ticket%20${data.ticketId}`;
-            
+
             mensaje.className = 'mensaje exito';
             mensaje.innerHTML = `
                 <i class="fas fa-check-circle"></i> 
@@ -125,10 +138,10 @@ ticketForm.addEventListener('submit', async (e) => {
     } finally {
         submitBtn.disabled = false;
         submitBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Enviar Solicitud';
-        
+
         // Scroll to message
         mensaje.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-        
+
         // Clear message after 10 seconds
         setTimeout(() => {
             mensaje.className = 'mensaje';

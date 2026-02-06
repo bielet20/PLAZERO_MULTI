@@ -177,7 +177,59 @@ const sendNotificationToSupport = async (ticketData, servicios) => {
     return transporter.sendMail(mailOptions);
 };
 
+// Send password reset email
+const sendPasswordResetEmail = async (email, username, resetUrl) => {
+    const transporter = createTransporter();
+
+    const mailOptions = {
+        from: process.env.EMAIL_FROM,
+        to: email,
+        subject: 'Recuperación de Contraseña - FONT MULTISERVEIS Y PLAZERO',
+        html: `
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <style>
+                    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+                    .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+                    .header { background: #667eea; color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+                    .content { background: #f9fafb; padding: 30px; border-radius: 0 0 10px 10px; }
+                    .btn { display: inline-block; padding: 12px 30px; background: #667eea; color: white; text-decoration: none; border-radius: 5px; margin: 20px 0; font-weight: bold; }
+                    .footer { text-align: center; padding: 20px; color: #6b7280; font-size: 14px; }
+                </style>
+            </head>
+            <body>
+                <div class="container">
+                    <div class="header">
+                        <h1>Recuperación de Contraseña</h1>
+                    </div>
+                    <div class="content">
+                        <p>Hola <strong>${username}</strong>,</p>
+                        <p>Has solicitado restablecer tu contraseña para el Panel de Administración de FONT MULTISERVEIS Y PLAZERO.</p>
+                        <p>Haz clic en el siguiente botón para elegir una nueva contraseña. Este enlace caducará en 1 hora.</p>
+                        
+                        <div style="text-align: center;">
+                            <a href="${resetUrl}" class="btn">Restablecer Contraseña</a>
+                        </div>
+                        
+                        <p>Si no has solicitado este cambio, puedes ignorar este correo de forma segura.</p>
+                        <p>Si el botón no funciona, copia y pega este enlace en tu navegador:</p>
+                        <p>${resetUrl}</p>
+                    </div>
+                    <div class="footer">
+                        <p><strong>${process.env.COMPANY_NAME || 'FONT MULTISERVEIS Y PLAZERO'}</strong></p>
+                    </div>
+                </div>
+            </body>
+            </html>
+        `
+    };
+
+    return transporter.sendMail(mailOptions);
+};
+
 module.exports = {
     sendTicketConfirmation,
-    sendNotificationToSupport
+    sendNotificationToSupport,
+    sendPasswordResetEmail
 };

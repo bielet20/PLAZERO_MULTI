@@ -12,6 +12,8 @@ const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const logger = require('./logger');
 const { sanitizeInput, sanitizeObject, validatePasswordStrength, validateEmail, validatePhone } = require('./security-utils');
+const crypto = require('crypto');
+const { sendPasswordResetEmail } = require('./email.js');
 
 // Multer para upload de archivos
 const multer = require('multer');
@@ -51,8 +53,12 @@ const {
     updateUser,
     updateUserLastAccess,
     deleteUser,
+    setPasswordResetToken,
+    getUserByResetToken,
+    clearResetToken,
     addHorasTrabajo,
     getHorasTrabajo,
+    getHorasResumenPorTicket,
     getTotalHorasTicket,
     getHorasPorTecnico,
     updateHorasTrabajo,
@@ -75,6 +81,8 @@ const {
     getAllInvoices,
     presentarInvoice,
     updateInvoice,
+    getDraftInvoicesByEmpresa,
+    appendItemsToInvoice,
     deleteInvoice,
     // Empresas
     getAllEmpresas,
@@ -89,7 +97,10 @@ const {
     getAppointmentsByTechnician,
     getAllAppointments,
     updateAppointmentStatus,
-    deleteAppointment
+    deleteAppointment,
+    // Backup & Restore
+    exportAllData,
+    restoreFromBackup
 } = require('./database');
 
 const {
@@ -99,6 +110,12 @@ const {
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+console.log('🚀 Server Version: 1.0.1 - Fixed Ticket Transfer Logic');
+
+app.get('/api/version', (req, res) => {
+    res.json({ version: '1.0.1', message: 'Ticket Transfer Fix Active' });
+});
 
 // Security: Helmet middleware for security headers
 app.use(helmet({
@@ -129,6 +146,8 @@ const loginLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutos
     max: 5, // 5 intentos
     message: {
+        success: false,
+        message: 'Demasiados intentos de inicio de sesión. Intente nuevamente en 15 minutos.',
         error: 'Demasiados intentos de inicio de sesión. Intente nuevamente en 15 minutos.'
     },
     standardHeaders: true,
@@ -232,8 +251,9 @@ const autoMigrateAdminCredentials = async () => {
         const adminUser = await getUserByUsername('admin');
         if (!adminUser) {
             console.log('⚠️  Usuario admin no encontrado, creando...');
-            const defaultHash = await bcrypt.hash('admin123', 10);
-            await createUser('admin', defaultHash, 'Administrador', 'admin@local', 'admin');
+            const defaultHash = await bcrypt.hash('Admin123!@#$', 10);
+            await createUser('admin', defaultHash, 'Administrador', 'admin@local', '', 'admin');
+            console.log('✓ Usuario admin creado con contraseña: Admin123!@#$');
             return;
         }
 
@@ -275,6 +295,20 @@ const requireAuth = (req, res, next) => {
 
 // Admin-only middleware
 const requireAdmin = (req, res, next) => {
+    const sessionState = {
+        authenticated: req.session?.authenticated,
+        rol: req.session?.rol,
+        username: req.session?.username,
+        timestamp: new Date().toISOString(),
+        url: req.originalUrl,
+        method: req.method
+    };
+
+    // Log to file for debugging
+    try {
+        fs.appendFileSync(path.join(__dirname, 'debug_session.log'), JSON.stringify(sessionState) + '\n');
+    } catch (e) { }
+
     if (req.session && req.session.authenticated && req.session.rol === 'admin') {
         return next();
     }
@@ -498,11 +532,13 @@ app.get('/api/tickets', requireAuth, csrfProtection, async (req, res) => {
 // Get ticket by ID
 app.get('/api/tickets/:ticketId', requireAuth, csrfProtection, async (req, res) => {
     try {
-        const ticket = await getTicketById(req.params.ticketId);
+        const { ticketId } = req.params;
+
+        const ticket = await getTicketById(ticketId);
         if (ticket) {
             res.json(ticket);
         } else {
-            res.status(404).json({ error: 'Ticket no encontrado' });
+            res.status(404).json({ error: `Ticket no encontrado: ${req.params.ticketId}` });
         }
     } catch (error) {
         console.error('Error al obtener ticket:', error);
@@ -525,7 +561,7 @@ app.patch('/api/tickets/:ticketId/status', requireAuth, csrfProtection, async (r
         if (result.changes > 0) {
             res.json({ success: true, message: 'Estado actualizado' });
         } else {
-            res.status(404).json({ error: 'Ticket no encontrado' });
+            res.status(404).json({ error: `Ticket no encontrado: ${req.params.ticketId}` });
         }
     } catch (error) {
         console.error('Error al actualizar estado:', error);
@@ -588,11 +624,10 @@ app.post('/api/tickets/:ticketId/horas', requireAuth, csrfProtection, async (req
 
         const result = await addHorasTrabajo(
             ticketId,
-            usuarioId,
             tecnicoNombre,
             horas,
             descripcion,
-            req.session.username
+            usuarioId
         );
 
         res.json({
@@ -602,7 +637,7 @@ app.post('/api/tickets/:ticketId/horas', requireAuth, csrfProtection, async (req
         });
     } catch (error) {
         console.error('Error registrando horas:', error);
-        res.status(500).json({ error: 'Error registrando horas: ' + error.message });
+        res.status(500).json({ error: 'Error al registrar horas' });
     }
 });
 
@@ -611,7 +646,7 @@ app.get('/api/tickets/:ticketId/horas', requireAuth, csrfProtection, async (req,
     try {
         const horas = await getHorasTrabajo(req.params.ticketId);
         const total = await getTotalHorasTicket(req.params.ticketId);
-        const porTecnico = await getHorasPorTecnico(req.params.ticketId);
+        const porTecnico = await getHorasResumenPorTicket(req.params.ticketId);
 
         res.json({
             horas: horas || [],
@@ -673,7 +708,8 @@ app.patch('/api/tickets/:ticketId/assign', requireAuth, csrfProtection, async (r
         if (result.changes > 0) {
             res.json({ success: true, message: 'Técnico asignado' });
         } else {
-            res.status(404).json({ error: 'Ticket no encontrado' });
+            const { ticketId } = req.params; // Define ticketId here
+            res.status(404).json({ error: `Ticket no encontrado: ${ticketId}` });
         }
     } catch (error) {
         console.error('Error al asignar técnico:', error);
@@ -692,7 +728,7 @@ app.put('/api/tickets/:ticketId', requireAuth, csrfProtection, async (req, res) 
         if (result.changes > 0) {
             res.json({ success: true, message: 'Ticket actualizado exitosamente' });
         } else {
-            res.status(404).json({ error: 'Ticket no encontrado' });
+            res.status(404).json({ error: `Ticket no encontrado: ${ticketId}` });
         }
     } catch (error) {
         console.error('Error al actualizar ticket:', error);
@@ -711,7 +747,7 @@ app.delete('/api/tickets/:ticketId', requireAuth, requireAdmin, csrfProtection, 
         if (result.changes > 0) {
             res.json({ success: true, message: 'Ticket archivado exitosamente' });
         } else {
-            res.status(404).json({ error: 'Ticket no encontrado' });
+            res.status(404).json({ error: `Ticket no encontrado: ${ticketId}` });
         }
     } catch (error) {
         console.error('Error al archivar ticket:', error);
@@ -728,7 +764,7 @@ app.post('/api/tickets/:ticketId/restore', requireAuth, requireAdmin, csrfProtec
         if (result.changes > 0) {
             res.json({ success: true, message: 'Ticket restaurado exitosamente' });
         } else {
-            res.status(404).json({ error: 'Ticket no encontrado' });
+            res.status(404).json({ error: `Ticket no encontrado: ${ticketId}` });
         }
     } catch (error) {
         console.error('Error al restaurar ticket:', error);
@@ -911,39 +947,63 @@ app.get('/api/appointments', requireAuth, csrfProtection, async (req, res) => {
 app.post('/api/appointments', requireAuth, csrfProtection, async (req, res) => {
     try {
         const { ticket_id, tecnico_id, fecha_cita, descripcion } = req.body;
+        console.log('--- Creating Appointment ---');
+        console.log('Body:', JSON.stringify(req.body));
 
         if (!ticket_id || !tecnico_id || !fecha_cita) {
+            console.log('Validation failed: missing fields');
             return res.status(400).json({ error: 'Ticket, técnico y fecha son requeridos' });
         }
 
-        const result = await createAppointment({ ticket_id, tecnico_id, fecha_cita, descripcion });
+        const result = createAppointment({ ticket_id, tecnico_id, fecha_cita, descripcion });
+        console.log('Database result:', JSON.stringify(result));
 
         // Trigger WhatsApp notification if WhatsApp is ready
-        const whatsappService = require('./whatsapp');
-        if (whatsappService.isReady) {
-            const users = await getAllUsers();
-            const technician = users.find(u => u.id === parseInt(tecnico_id));
-            const ticket = await getTicketById(ticket_id);
+        try {
+            const whatsappService = require('./whatsapp');
+            console.log('WhatsApp Service status:', whatsappService.isReady ? 'Ready' : 'Not Ready');
 
-            if (technician && technician.whatsapp && ticket) {
-                const message = `📅 *NUEVA CITA ASIGNADA*\n\n` +
-                    `Ticket: ${ticket.ticket_id}\n` +
-                    `Cliente: ${ticket.nombre}\n` +
-                    `Fecha: ${new Date(fecha_cita).toLocaleString('es-ES')}\n` +
-                    `Descripción: ${descripcion || 'Sin descripción'}\n` +
-                    `Servicio: ${ticket.servicio}\n\n` +
-                    `Por favor, confirma asistencia.`;
+            if (whatsappService.isReady) {
+                const users = getAllUsers();
+                const technician = users.find(u => u.id === parseInt(tecnico_id));
+                const ticket = getTicketById(ticket_id);
 
-                whatsappService.sendMessage(technician.whatsapp, message)
-                    .then(() => console.log(`✓ Notificación de WhatsApp enviada al técnico ${technician.username}`))
-                    .catch(err => console.error('Error enviando WhatsApp:', err));
+                console.log('Technician found:', technician ? technician.username : 'No');
+                console.log('Ticket found:', ticket ? ticket.ticket_id : 'No');
+
+                if (technician && technician.whatsapp && ticket) {
+                    const message = `📅 *NUEVA CITA ASIGNADA*\n\n` +
+                        `Ticket: ${ticket.ticket_id}\n` +
+                        `Cliente: ${ticket.nombre}\n` +
+                        `Fecha: ${new Date(fecha_cita).toLocaleString('es-ES')}\n` +
+                        `Descripción: ${descripcion || 'Sin descripción'}\n` +
+                        `Servicio: ${ticket.servicio}\n\n` +
+                        `Por favor, confirma asistencia.`;
+
+                    console.log('Sending WhatsApp to:', technician.whatsapp);
+                    whatsappService.sendMessage(technician.whatsapp, message)
+                        .then(() => console.log(`✓ Notificación de WhatsApp enviada al técnico ${technician.username}`))
+                        .catch(err => console.error('Error sending WhatsApp message:', err));
+                } else {
+                    console.log('Skipping WhatsApp: Missing technician/whatsapp/ticket info');
+                }
             }
+        } catch (waError) {
+            console.error('Error in WhatsApp logic (non-fatal):', waError);
         }
 
         res.status(201).json({ success: true, id: result.id });
     } catch (error) {
-        console.error('Error al crear cita:', error);
-        res.status(500).json({ error: 'Error al crear cita' });
+        const errorDetail = `[${new Date().toISOString()}] CRITICAL Error creating appointment:\n${error.stack}\nBody: ${JSON.stringify(req.body)}\n\n`;
+        try {
+            fs.appendFileSync(path.join(__dirname, 'debug_appointment.log'), errorDetail);
+        } catch (fsErr) {
+            console.error('Failed to write to debug log:', fsErr);
+        }
+
+        console.error('CRITICAL Error creating appointment:');
+        console.error(error);
+        res.status(500).json({ error: 'Error al crear cita: ' + error.message });
     }
 });
 
@@ -1112,12 +1172,12 @@ app.delete('/api/tickets/materiales/:id', requireAuth, csrfProtection, async (re
 app.post('/api/tickets/:ticketId/invoices', requireAuth, requireAdmin, csrfProtection, async (req, res) => {
     try {
         const { ticketId } = req.params;
-        const { iva_percent = 21, fecha_vencimiento } = req.body;
+        const { iva_percent = 21, fecha_vencimiento, targetInvoiceId } = req.body;
 
         // 1. Get ticket details
         const ticket = await getTicketById(ticketId);
         if (!ticket) {
-            return res.status(404).json({ error: 'Ticket no encontrado' });
+            return res.status(404).json({ error: `Ticket no encontrado: ${ticketId}` });
         }
 
         // 2. Get worked hours and materials
@@ -1161,25 +1221,36 @@ app.post('/api/tickets/:ticketId/invoices', requireAuth, requireAdmin, csrfProte
         const iva = subtotal * (iva_percent / 100);
         const total = subtotal + iva;
 
-        // 4. Create invoice
-        const invoiceData = {
-            ticket_id: ticketId,
-            cliente_nombre: ticket.nombre,
-            cliente_email: ticket.email,
-            fecha_vencimiento,
-            subtotal,
-            iva,
-            total,
-            items
-        };
+        if (targetInvoiceId) {
+            // Append items to existing invoice
+            await appendItemsToInvoice(targetInvoiceId, items, ticketId);
+            res.status(200).json({
+                success: true,
+                message: 'Elementos añadidos a la factura ' + targetInvoiceId,
+                invoiceId: targetInvoiceId
+            });
+        } else {
+            // Create new invoice
+            const invoiceData = {
+                ticket_id: ticketId,
+                empresa_id: ticket.empresa_id || null,
+                cliente_nombre: ticket.nombre,
+                cliente_email: ticket.email,
+                fecha_vencimiento,
+                subtotal,
+                iva,
+                total,
+                items
+            };
 
-        const result = await createInvoice(invoiceData);
+            const result = await createInvoice(invoiceData);
 
-        res.status(201).json({
-            success: true,
-            message: 'Factura creada exitosamente',
-            invoiceId: result.invoiceId
-        });
+            res.status(201).json({
+                success: true,
+                message: 'Factura creada exitosamente',
+                invoiceId: result.invoiceId
+            });
+        }
 
     } catch (error) {
         console.error('Error creando factura:', error);
@@ -1302,8 +1373,8 @@ app.put('/api/facturas/:id/presentar', requireAuth, requireAdmin, csrfProtection
 app.put('/api/facturas/:id', requireAuth, requireAdmin, csrfProtection, async (req, res) => {
     try {
         const { id } = req.params;
-        const { subtotal, iva, total, estado } = req.body;
-        const result = await updateInvoice(id, { subtotal, iva, total, estado });
+        const { cliente_nombre, cliente_email, fecha_vencimiento, items, estado } = req.body;
+        const result = await updateInvoice(id, { cliente_nombre, cliente_email, fecha_vencimiento, items, estado });
         res.json({ success: true, message: 'Factura actualizada exitosamente', changes: result.changes });
     } catch (error) {
         console.error('Error actualizando factura:', error);
@@ -1348,6 +1419,17 @@ app.get('/api/empresas/:id', requireAuth, csrfProtection, async (req, res) => {
     } catch (error) {
         console.error('Error obteniendo empresa:', error);
         res.status(500).json({ error: 'Error obteniendo empresa' });
+    }
+});
+
+// Get draft invoices for an empresa
+app.get('/api/empresas/:id/invoices/draft', requireAuth, csrfProtection, async (req, res) => {
+    try {
+        const invoices = await getDraftInvoicesByEmpresa(req.params.id);
+        res.json(invoices);
+    } catch (error) {
+        console.error('Error obteniendo facturas borrador:', error);
+        res.status(500).json({ error: 'Error obteniendo facturas borrador' });
     }
 });
 
@@ -1421,9 +1503,9 @@ app.post('/api/tickets/:ticketId/transferir-empresa', requireAuth, requireAdmin,
         const result = await transferirTicketEmpresa(ticketId, empresa_id);
 
         if (result.changes > 0) {
-            res.json({ success: true, message: 'Ticket transferido exitosamente a la nueva empresa' });
+            res.json({ success: true, message: 'Ticket transferido exitosamente' });
         } else {
-            res.status(404).json({ error: 'Ticket no encontrado' });
+            res.status(404).json({ error: `Ticket no encontrado: ${ticketId}` });
         }
     } catch (error) {
         console.error('Error transfiriendo ticket:', error);
@@ -1447,12 +1529,14 @@ app.get('/api/usuarios', requireAuth, csrfProtection, async (req, res) => {
 // Create new user
 app.post('/api/usuarios', requireAuth, csrfProtection, async (req, res) => {
     try {
-        const { username, password, nombre_completo, email, rol } = req.body;
+        const { username, password, nombre_completo, email, whatsapp, rol } = req.body;
 
         // Validar datos requeridos
         if (!username || !password) {
             return res.status(400).json({ error: 'Usuario y contraseña son obligatorios' });
         }
+
+        console.log('[CREATE USER] Password received:', password, 'Length:', password.length);
 
         // Security: Validar fortaleza de contraseña
         const passwordValidation = validatePasswordStrength(password);
@@ -1483,7 +1567,7 @@ app.post('/api/usuarios', requireAuth, csrfProtection, async (req, res) => {
         const sanitizedNombreCompleto = nombre_completo ? sanitizeInput(nombre_completo) : null;
 
         // Crear usuario
-        const result = await createUser(sanitizedUsername, passwordHash, sanitizedNombreCompleto, email, rol || 'tecnico');
+        const result = await createUser(sanitizedUsername, passwordHash, sanitizedNombreCompleto, email, whatsapp, rol || 'tecnico');
 
         // Security: Log de auditoría
         logger.info('User created', {
@@ -1515,12 +1599,19 @@ app.post('/api/usuarios', requireAuth, csrfProtection, async (req, res) => {
 app.put('/api/usuarios/:id', requireAuth, csrfProtection, async (req, res) => {
     try {
         const { id } = req.params;
-        const { nombre_completo, email, rol, activo, password } = req.body;
+        const { nombre_completo, email, whatsapp, rol, activo, password } = req.body;
 
-        const updateData = { nombre_completo, email, rol, activo };
+        const updateData = { nombre_completo, email, whatsapp, rol, activo };
 
-        // Si se proporciona nueva contraseña, hashearla
+        // If se proporciona nueva contraseña, validarla y hashearla
         if (password) {
+            const passwordValidation = validatePasswordStrength(password);
+            if (!passwordValidation.valid) {
+                return res.status(400).json({
+                    error: 'La contraseña no cumple con los requisitos de seguridad',
+                    details: passwordValidation.errors
+                });
+            }
             const saltRounds = 10;
             updateData.password_hash = await bcrypt.hash(password, saltRounds);
         }
@@ -1582,6 +1673,34 @@ app.get('/api/session', csrfProtection, (req, res) => {
             rol: null,
             isAdmin: false
         });
+    }
+});
+
+// Debug endpoint to check session and user details
+app.get('/api/debug-session', requireAuth, async (req, res) => {
+    try {
+        const user = await getUserByUsername(req.session.username);
+        res.json({
+            session: {
+                authenticated: req.session.authenticated,
+                username: req.session.username,
+                userId: req.session.userId,
+                rol: req.session.rol
+            },
+            database: {
+                id: user?.id,
+                username: user?.username,
+                rol: user?.rol,
+                activo: user?.activo
+            },
+            checks: {
+                isAuthenticated: !!(req.session && req.session.authenticated),
+                hasAdminRole: req.session.rol === 'admin',
+                wouldPassRequireAdmin: !!(req.session && req.session.authenticated && req.session.rol === 'admin')
+            }
+        });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
     }
 });
 
@@ -1691,42 +1810,44 @@ app.get('/api/backups', requireAuth, csrfProtection, async (req, res) => {
 // Create backup now
 app.post('/api/backups/create', requireAuth, requireAdmin, csrfProtection, async (req, res) => {
     try {
-        // Base de datos en memoria - exportar como JSON
+        const timestamp = new Date().toISOString().replace(/:/g, '-').split('.')[0];
+        const filename = `backup_${timestamp}.json`;
+        const backupDir = path.join(__dirname, 'backups');
+        const backupFile = path.join(backupDir, filename);
+
+        // Exportar todos los datos
+        const data = exportAllData();
         const backup = {
             timestamp: new Date().toISOString(),
-            note: 'Base de datos en memoria - backup exportado como JSON',
-            data: {
-                tickets: getAllTickets(true),
-                usuarios: getAllUsers(),
-                servicios: getAllServices(true),
-                empresas: getAllEmpresas(),
-                materiales: getAllMaterials(),
-                facturas: getAllInvoices()
-            }
+            version: '1.0',
+            note: 'Backup completo - Base de datos en memoria',
+            data: data
         };
 
-        const backupDir = path.join(__dirname, 'backups');
         if (!fs.existsSync(backupDir)) {
             fs.mkdirSync(backupDir, { recursive: true });
         }
 
-        const timestamp = new Date().toISOString().replace(/:/g, '-').split('.')[0];
-        const backupFile = path.join(backupDir, `backup_${timestamp}.json`);
-
         fs.writeFileSync(backupFile, JSON.stringify(backup, null, 2));
         const stats = fs.statSync(backupFile);
 
-        res.json({
+        const responseData = {
             success: true,
             message: 'Backup creado exitosamente',
             backup: {
-                name: `backup_${timestamp}.json`,
+                name: filename,
                 size: stats.size,
                 sizeReadable: (stats.size / 1024).toFixed(2) + ' KB',
                 created: new Date().toISOString()
-            },
-            note: 'Base de datos en memoria - backup exportado como JSON'
-        });
+            }
+        };
+
+        // Si el cliente solicita descarga inmediata
+        if (req.query.download === 'true') {
+            return res.download(backupFile, filename);
+        }
+
+        res.json(responseData);
     } catch (error) {
         console.error('❌ Error durante el backup:', error.message);
         res.status(500).json({
@@ -1763,38 +1884,79 @@ app.get('/api/backups/download/:filename', requireAuth, csrfProtection, (req, re
 app.post('/api/backups/restore', requireAuth, requireAdmin, upload.single('backupFile'), csrfProtection, async (req, res) => {
     try {
         const file = req.file;
-
         if (!file) {
             return res.status(400).json({ error: 'No se subió ningún archivo' });
         }
 
-        if (!file.originalname.endsWith('.tar.gz')) {
+        const backupContent = fs.readFileSync(file.path, 'utf8');
+        let backupData;
+        try {
+            backupData = JSON.parse(backupContent);
+        } catch (e) {
             fs.unlinkSync(file.path);
-            return res.status(400).json({ error: 'El archivo debe ser .tar.gz' });
+            return res.status(400).json({ error: 'El archivo no es un JSON válido' });
         }
 
+        // Validación básica
+        if (!backupData.data || !backupData.data.usuarios) {
+            fs.unlinkSync(file.path);
+            return res.status(400).json({ error: 'El backup no tiene el formato correcto' });
+        }
+
+        // Restaurar
+        restoreFromBackup(backupData.data);
+
+        // Mover a la carpeta de backups para referencia futura
         const backupDir = path.join(__dirname, 'backups');
         const finalPath = path.join(backupDir, file.originalname);
-
-        // Mover archivo a directorio de backups
         fs.renameSync(file.path, finalPath);
 
-        // Ejecutar restauración
-        const restoreScript = path.join(__dirname, 'restore.js');
-        if (!fs.existsSync(restoreScript)) {
-            return res.status(404).json({ error: 'Script de restauración no encontrado' });
-        }
-
-        // Para restore, sería más seguro que el usuario confirme manualmente
         res.json({
             success: true,
-            message: 'Archivo de backup subido correctamente. Para restaurar, ejecuta el comando en servidor.',
-            file: file.originalname,
-            path: finalPath,
-            instruction: 'Ejecutar en servidor: node restore.js'
+            message: 'Backup restaurado correctamente',
+            file: file.originalname
         });
     } catch (error) {
-        res.status(500).json({ error: 'Error al procesar backup: ' + error.message });
+        if (req.file) fs.unlinkSync(req.file.path);
+        res.status(500).json({ error: 'Error al restaurar backup: ' + error.message });
+    }
+});
+
+// Restore from existing backup file
+app.post('/api/backups/restore/:filename', requireAuth, requireAdmin, csrfProtection, async (req, res) => {
+    try {
+        const filename = req.params.filename;
+        if (filename.includes('..') || filename.includes('/')) {
+            return res.status(400).json({ error: 'Nombre de archivo inválido' });
+        }
+
+        const filePath = path.join(__dirname, 'backups', filename);
+        if (!fs.existsSync(filePath)) {
+            return res.status(404).json({ error: 'Backup no encontrado' });
+        }
+
+        const backupContent = fs.readFileSync(filePath, 'utf8');
+        let backupData;
+        try {
+            backupData = JSON.parse(backupContent);
+        } catch (e) {
+            return res.status(400).json({ error: 'El archivo no es un JSON válido' });
+        }
+
+        // Validación básica
+        if (!backupData.data || !backupData.data.usuarios) {
+            return res.status(400).json({ error: 'El backup no tiene el formato correcto' });
+        }
+
+        // Restaurar
+        restoreFromBackup(backupData.data);
+
+        res.json({
+            success: true,
+            message: 'Backup restaurado correctamente desde el archivo: ' + filename
+        });
+    } catch (error) {
+        res.status(500).json({ error: 'Error al restaurar backup: ' + error.message });
     }
 });
 
@@ -1821,6 +1983,83 @@ app.delete('/api/backups/:filename', requireAuth, requireAdmin, csrfProtection, 
         });
     } catch (error) {
         res.status(500).json({ error: error.message });
+    }
+});
+
+// Forgot Password - Generate token and send email
+app.post('/api/forgot-password', async (req, res) => {
+    try {
+        const { username } = req.body;
+        if (!username) {
+            return res.status(400).json({ error: 'El usuario es obligatorio' });
+        }
+
+        const user = await getUserByUsername(username);
+        if (!user || !user.email) {
+            // Security: Don't reveal if user exists or has email
+            return res.json({
+                success: true,
+                message: 'Si el usuario existe y tiene un correo configurado, recibirás instrucciones brevemente.'
+            });
+        }
+
+        // Generate token
+        const token = crypto.randomBytes(32).toString('hex');
+        const expires = new Date(Date.now() + 3600000).toISOString(); // 1 hour
+
+        await setPasswordResetToken(username, token, expires);
+
+        // Send email
+        const resetUrl = `${req.protocol}://${req.get('host')}/reset-password.html?token=${token}`;
+        await sendPasswordResetEmail(user.email, user.username, resetUrl);
+
+        res.json({
+            success: true,
+            message: 'Si el usuario existe y tiene un correo configurado, recibirás instrucciones brevemente.'
+        });
+    } catch (error) {
+        console.error('Error in forgot-password:', error);
+        res.status(500).json({ error: 'Error al procesar la solicitud de recuperación' });
+    }
+});
+
+// Reset Password - Verify token and update password
+app.post('/api/reset-password', async (req, res) => {
+    try {
+        const { token, password } = req.body;
+        if (!token || !password) {
+            return res.status(400).json({ error: 'Token y contraseña son obligatorios' });
+        }
+
+        // Validate password
+        const passwordValidation = validatePasswordStrength(password);
+        if (!passwordValidation.valid) {
+            return res.status(400).json({
+                error: 'La contraseña no cumple con los requisitos de seguridad',
+                details: passwordValidation.errors
+            });
+        }
+
+        const user = await getUserByResetToken(token);
+        if (!user) {
+            return res.status(400).json({ error: 'El enlace de recuperación es inválido o ha caducado' });
+        }
+
+        // Hash new password
+        const saltRounds = 10;
+        const passwordHash = await bcrypt.hash(password, saltRounds);
+
+        // Update user
+        await updateUser(user.id, { password_hash: passwordHash });
+        await clearResetToken(user.username);
+
+        res.json({
+            success: true,
+            message: 'Contraseña actualizada correctamente'
+        });
+    } catch (error) {
+        console.error('Error in reset-password:', error);
+        res.status(500).json({ error: 'Error al restablecer la contraseña' });
     }
 });
 
@@ -1936,6 +2175,7 @@ app.post('/api/setup/create-root-user', csrfProtection, async (req, res) => {
             rootHash,
             'Root Administrator',
             'root@admin.local',
+            '', // whatsapp
             'admin'
         );
 
@@ -1972,8 +2212,19 @@ app.use((req, res) => {
 
 // Error handler
 app.use((err, req, res, next) => {
+    console.error('--- GLOBAL ERROR ---');
     console.error(err.stack);
-    res.status(500).json({ error: 'Error interno del servidor' });
+
+    // Log to file if possible
+    try {
+        fs.appendFileSync(path.join(__dirname, 'global_errors.log'), `[${new Date().toISOString()}] ${err.stack}\n\n`);
+    } catch (fsErr) { }
+
+    if (err.code === 'EBADCSRFTOKEN') {
+        return res.status(403).json({ error: 'Error de validación CSRF (sesión expirada o inválida). Por favor, recarga la página.' });
+    }
+
+    res.status(500).json({ error: 'Error interno del servidor: ' + err.message });
 });
 
 // Start server

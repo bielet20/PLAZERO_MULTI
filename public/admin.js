@@ -1,12 +1,51 @@
-async function createInvoiceForTicket(ticketId) {
-    const userConfirmed = await showConfirm('¿Está seguro de que desea crear una factura para este ticket? Se utilizarán las horas y materiales registrados.', 'Crear Factura');
-    if (!userConfirmed) return;
+// State for invoice linking
+let currentTicketIdForInvoice = null;
+let currentEmpresaIdForInvoice = null;
 
+async function createInvoiceForTicket(ticketId) {
+    try {
+        // 1. Get ticket details to check for empresa
+        const response = await fetch(`/api/tickets/${ticketId}`);
+        if (!response.ok) throw new Error('No se pudo obtener la información del ticket');
+        const ticket = await response.json();
+
+        currentTicketIdForInvoice = ticketId;
+        currentEmpresaIdForInvoice = ticket.empresa_id;
+
+        // 2. If ticket has an empresa, check for draft invoices
+        if (currentEmpresaIdForInvoice) {
+            const draftResponse = await fetch(`/api/empresas/${currentEmpresaIdForInvoice}/invoices/draft`);
+            if (draftResponse.ok) {
+                const drafts = await draftResponse.json();
+                if (drafts.length > 0) {
+                    // Show modal to choose between new or append
+                    showLinkInvoiceModal(drafts);
+                    return;
+                }
+            }
+        }
+
+        // 3. Fallback to default (create new) if no empresa or no drafts
+        const userConfirmed = await showConfirm('¿Está seguro de que desea crear una factura para este ticket? Se utilizarán las horas y materiales registrados.', 'Crear Factura');
+        if (!userConfirmed) return;
+
+        await executeCreateInvoice(ticketId);
+
+    } catch (error) {
+        console.error('Error in createInvoiceForTicket:', error);
+        showNotification('Error: ' + error.message, 'error');
+    }
+}
+
+async function executeCreateInvoice(ticketId, targetInvoiceId = null) {
     try {
         const response = await fetch(`/api/tickets/${ticketId}/invoices`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'csrf-token': csrfToken },
-            body: JSON.stringify({ iva_percent: 21 })
+            body: JSON.stringify({
+                iva_percent: 21,
+                targetInvoiceId: targetInvoiceId
+            })
         });
 
         const result = await response.json();
@@ -14,13 +53,61 @@ async function createInvoiceForTicket(ticketId) {
             throw new Error(result.error);
         }
 
-        showNotification(`Factura ${result.invoiceId} creada exitosamente.`, 'success');
+        const msg = targetInvoiceId ? `Conceptos añadidos a la factura ${targetInvoiceId}` : `Factura ${result.invoiceId} creada exitosamente.`;
+        showNotification(msg, 'success');
         viewTicket(ticketId); // Recargar los detalles del ticket para mostrar la nueva factura
 
     } catch (error) {
-        console.error('Error creating invoice:', error);
-        showNotification('Error al crear la factura: ' + error.message, 'error');
+        console.error('Error executing invoice operation:', error);
+        showNotification('Error: ' + error.message, 'error');
     }
+}
+
+function showLinkInvoiceModal(drafts) {
+    const modal = document.getElementById('linkInvoiceModal');
+    const select = document.getElementById('targetInvoiceIdSelect');
+
+    // Reset options
+    select.innerHTML = '';
+    drafts.forEach(d => {
+        const option = document.createElement('option');
+        option.value = d.factura_id;
+        option.textContent = `${d.factura_id} - ${d.cliente_nombre} (${d.total.toFixed(2)} €)`;
+        select.appendChild(option);
+    });
+
+    // Reset radio buttons
+    document.querySelector('input[name="invoiceOption"][value="new"]').checked = true;
+    toggleInvoiceSelect(false);
+
+    modal.style.display = 'block';
+}
+
+function closeLinkInvoiceModal() {
+    document.getElementById('linkInvoiceModal').style.display = 'none';
+}
+
+function toggleInvoiceSelect(show) {
+    document.getElementById('targetInvoiceSelectContainer').style.display = show ? 'block' : 'none';
+}
+
+async function confirmCreateOrAppendInvoice() {
+    const option = document.querySelector('input[name="invoiceOption"]:checked').value;
+    let targetInvoiceId = null;
+
+    if (option === 'append') {
+        targetInvoiceId = document.getElementById('targetInvoiceIdSelect').value;
+        if (!targetInvoiceId) {
+            showNotification('Debe seleccionar una factura de destino', 'warning');
+            return;
+        }
+    } else {
+        const confirmed = await showConfirm('¿Crear una nueva factura independiente para este ticket?', 'Nueva Factura');
+        if (!confirmed) return;
+    }
+
+    closeLinkInvoiceModal();
+    await executeCreateInvoice(currentTicketIdForInvoice, targetInvoiceId);
 }
 
 async function viewInvoice(invoiceId) {
@@ -43,17 +130,31 @@ async function viewInvoice(invoiceId) {
                 `).join('');
 
         const detailsHtml = `
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; margin-bottom: 2rem; padding: 1.5rem; background: #f9fafb; border-radius: 8px;">
+                        <div>
+                            <h3 style="margin: 0 0 1rem 0; color: #2563eb;">Emisor</h3>
+                            <div style="line-height: 1.6;">
+                                <strong>FONT MULTISERVEIS Y PLAZERO</strong><br>
+                                CIF: ${invoice.emisor_cif || 'B12345678'}<br>
+                                Dirección: C/ Ejemplo, 123<br>
+                                08001 Barcelona<br>
+                                Tel: 600 123 456<br>
+                                Email: info@fontplazero.com
+                            </div>
+                        </div>
+                        <div>
+                            <h3 style="margin: 0 0 1rem 0; color: #2563eb;">Cliente</h3>
+                            <div style="line-height: 1.6;">
+                                <strong>${invoice.cliente_nombre}</strong><br>
+                                Email: ${invoice.cliente_email}<br>
+                                ${invoice.empresa_nombre ? `Empresa: ${invoice.empresa_nombre}<br>` : ''}
+                                ${invoice.empresa_cif ? `CIF: ${invoice.empresa_cif}<br>` : ''}
+                            </div>
+                        </div>
+                    </div>
                     <div class="detail-row">
                         <div class="detail-label">Factura ID</div>
                         <div><strong>${invoice.factura_id}</strong></div>
-                    </div>
-                    <div class="detail-row">
-                        <div class="detail-label">Cliente</div>
-                        <div>${invoice.cliente_nombre}</div>
-                    </div>
-                     <div class="detail-row">
-                        <div class="detail-label">Email</div>
-                        <div>${invoice.cliente_email}</div>
                     </div>
                     <div class="detail-row">
                         <div class="detail-label">Fecha de Emisión</div>
@@ -80,23 +181,34 @@ async function viewInvoice(invoiceId) {
                             </tbody>
                         </table>
                     </div>
-                    <div style="margin-top: 2rem; display: flex; justify-content: space-between; align-items: flex-end;">
-                        <div class="verifactu-container" style="${invoice.hash ? '' : 'display: none;'}">
-                            <div class="verifactu-badge">
-                                <i class="fas fa-check-circle"></i> VERI*FACTU
+                    <div style="margin-top: 2rem; display: flex; flex-direction: column; align-items: center; gap: 2rem;">
+                        <div class="verifactu-container-centered" style="${invoice.hash ? '' : 'display: none;'}">
+                <div class="verifactu-badge">
+                    <i class="fas fa-check-circle"></i> VERI*FACTU
                             </div>
-                            <img src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(`https://www2.agenciatributaria.gob.es/wlpl/TIKE-CONT/v1/qr/v1/verificar?id=${invoice.factura_id}&hash=${invoice.hash}&total=${invoice.total}`)}" alt="QR Veri*Factu" class="verifactu-qr">
+                            <div class="verifactu-content">
+                                <img src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(`https://www2.agenciatributaria.gob.es/wlpl/TIKE-CONT/v1/qr/v1/verificar?id=${invoice.factura_id}&nif=${invoice.emisor_cif}&fecha=${invoice.fecha_emision.substring(0, 10)}&total=${invoice.total}&hash=${invoice.hash.substring(0, 8).toUpperCase()}`)}" alt="QR Veri*Factu" class="verifactu-qr">
+                                <div class="verifactu-hash">
+                                    <strong>Huella Digital:</strong><br>${invoice.hash.substring(0, 8).toUpperCase()}
+                                </div>
+                            </div>
                             <div class="verifactu-footer">
                                 Factura verificable en la sede electrónica de la AEAT
                             </div>
                         </div>
-                        <div style="text-align: right; flex: 1;">
-                            <div style="font-size: 1.1rem;"><strong>Subtotal:</strong> ${invoice.subtotal.toFixed(2)} €</div>
-                            <div style="font-size: 1.1rem;"><strong>IVA:</strong> ${invoice.iva.toFixed(2)} €</div>
-                            <div style="font-size: 1.5rem; font-weight: bold; margin-top: 0.5rem;">Total: ${invoice.total.toFixed(2)} €</div>
-                        </div>
+                        
+            <div class="invoice-totals">
+                <div><strong>Subtotal:</strong> ${invoice.subtotal.toFixed(2)} €</div>
+                <div><strong>IVA (21%):</strong> ${invoice.iva.toFixed(2)} €</div>
+                <div class="total-amount">Total: ${invoice.total.toFixed(2)} €</div>
+            </div>
                     </div>
-                `;
+            <div style="margin-top: 2rem; display: flex; gap: 1rem; justify-content: flex-end; border-top: 1px solid #e5e7eb; padding-top: 1.5rem;" class="no-print">
+                <button class="btn" style="background: #3b82f6;" onclick="printInvoice()">
+                    <i class="fas fa-print"></i> Imprimir Factura
+                </button>
+            </div>
+        `;
 
         document.getElementById('invoiceDetails').innerHTML = detailsHtml;
         document.getElementById('invoiceModal').classList.add('active');
@@ -109,6 +221,10 @@ async function viewInvoice(invoiceId) {
 
 function closeInvoiceModal() {
     document.getElementById('invoiceModal').classList.remove('active');
+}
+
+function printInvoice() {
+    window.print();
 }
 // ==================== MODERN NOTIFICATION SYSTEM ====================
 
@@ -153,7 +269,7 @@ function showNotification(message, type = 'info', duration = 5000, title = '') {
     };
 
     const notification = document.createElement('div');
-    notification.className = `notification ${type}`;
+    notification.className = `notification ${type} `;
     notification.innerHTML = `
         <div class="notification-icon">
             <i class="fas ${icons[type]}"></i>
@@ -165,7 +281,7 @@ function showNotification(message, type = 'info', duration = 5000, title = '') {
         <button class="notification-close" onclick="this.parentElement.remove()">
             <i class="fas fa-times"></i>
         </button>
-    `;
+        `;
 
     container.appendChild(notification);
 
@@ -196,7 +312,7 @@ function showConfirm(message, title = 'Confirmar Acción') {
             overlay.id = 'confirmOverlay';
             overlay.className = 'confirm-overlay';
             overlay.innerHTML = `
-                <div class="confirm-modal">
+            <div class="confirm-modal">
                     <div class="confirm-title" id="confirmTitle"></div>
                     <div class="confirm-message" id="confirmMessage"></div>
                     <div class="confirm-buttons">
@@ -324,7 +440,7 @@ async function loadUsers() {
         }
 
         tableBody.innerHTML = users.map(user => `
-                    <tr>
+            <tr>
                         <td>${user.username}</td>
                         <td>${user.nombre_completo || '-'}</td>
                         <td>${user.email || '-'}</td>
@@ -334,8 +450,8 @@ async function loadUsers() {
                         <td class="user-actions">
                             <button class="btn-icon btn-edit" onclick='editUser(${JSON.stringify(user)})'><i class="fas fa-edit"></i></button>
                         </td>
-                    </tr>
-                `).join('');
+                </tr>
+            `).join('');
 
         applyPermissions();
 
@@ -418,7 +534,7 @@ async function loadServices() {
         }
 
         tableBody.innerHTML = services.map(service => `
-                    <tr>
+            <tr>
                         <td>${service.codigo}</td>
                         <td>${service.nombre}</td>
                         <td>${service.descripcion || '-'}</td>
@@ -427,8 +543,8 @@ async function loadServices() {
                             <button class="btn-icon btn-edit" onclick='editService(${JSON.stringify(service)})'><i class="fas fa-edit"></i></button>
                             <button class="btn-icon btn-delete" onclick="deleteService(${service.id})"><i class="fas fa-trash"></i></button>
                         </td>
-                    </tr>
-                `).join('');
+                </tr>
+            `).join('');
 
         applyPermissions();
 
@@ -467,11 +583,21 @@ async function saveService(event) {
     const url = serviceId ? `/api/servicios/${serviceId}` : '/api/servicios';
     const method = serviceId ? 'PUT' : 'POST';
 
+    const serviceCode = document.getElementById('serviceCode').value;
+    const serviceName = document.getElementById('serviceName').value;
+    const serviceDescription = document.getElementById('serviceDescription').value;
+    const serviceActive = document.getElementById('serviceActive').value;
+
+    if (!serviceCode || !serviceName || serviceActive === '') {
+        showNotification('Por favor complete todos los campos obligatorios del servicio', 'warning');
+        return;
+    }
+
     const serviceData = {
-        codigo: document.getElementById('serviceCode').value,
-        nombre: document.getElementById('serviceName').value,
-        descripcion: document.getElementById('serviceDescription').value,
-        activo: document.getElementById('serviceActive').value,
+        codigo: serviceCode,
+        nombre: serviceName,
+        descripcion: serviceDescription,
+        activo: serviceActive,
         _csrf: csrfToken
     };
 
@@ -539,7 +665,7 @@ async function loadMaterials() {
         }
 
         tableBody.innerHTML = materials.map(material => `
-                    <tr>
+            <tr>
                         <td>${material.nombre}</td>
                         <td>${material.descripcion || '-'}</td>
                         <td>${(material.precio || 0).toFixed(2)} €</td>
@@ -548,8 +674,8 @@ async function loadMaterials() {
                             <button class="btn-icon btn-edit" onclick='editMaterial(${JSON.stringify(material)})'><i class="fas fa-edit"></i></button>
                             <button class="btn-icon btn-delete" onclick="deleteMaterial(${material.id})"><i class="fas fa-trash"></i></button>
                         </td>
-                    </tr>
-                `).join('');
+                </tr>
+            `).join('');
 
         applyPermissions();
 
@@ -588,11 +714,20 @@ async function saveMaterial(event) {
     const url = materialId ? `/api/materiales/${materialId}` : '/api/materiales';
     const method = materialId ? 'PUT' : 'POST';
 
+    const materialName = document.getElementById('materialName').value;
+    const materialPrice = parseFloat(document.getElementById('materialPrice').value);
+    const materialActive = document.getElementById('materialActive').value;
+
+    if (!materialName || isNaN(materialPrice) || materialActive === '') {
+        showNotification('Por favor complete todos los campos obligatorios del material', 'warning');
+        return;
+    }
+
     const materialData = {
-        nombre: document.getElementById('materialName').value,
+        nombre: materialName,
         descripcion: document.getElementById('materialDescription').value,
-        precio: parseFloat(document.getElementById('materialPrice').value),
-        activo: document.getElementById('materialActive').value,
+        precio: materialPrice,
+        activo: materialActive,
         _csrf: csrfToken
     };
 
@@ -679,7 +814,7 @@ async function loadEmpresas() {
 
 
         tableBody.innerHTML = empresas.map(empresa => `
-                    <tr>
+            <tr>
                         <td>${empresa.nombre}</td>
                         <td>${empresa.cif || '-'}</td>
                         <td>${empresa.direccion || '-'}</td>
@@ -696,8 +831,8 @@ async function loadEmpresas() {
                             <button class="btn-icon btn-edit" onclick='editEmpresa(${JSON.stringify(empresa)})'><i class="fas fa-edit"></i></button>
                             <button class="btn-icon btn-delete" onclick="deleteEmpresa(${empresa.id})"><i class="fas fa-trash"></i></button>
                         </td>
-                    </tr>
-                `).join('');
+                </tr>
+            `).join('');
 
         applyPermissions();
 
@@ -996,13 +1131,21 @@ async function saveEmpresa(event) {
     const url = empresaId ? `/api/empresas/${empresaId}` : '/api/empresas';
     const method = empresaId ? 'PUT' : 'POST';
 
+    const empresaNombre = document.getElementById('empresaNombre').value;
+    const empresaActive = document.getElementById('empresaActive').value;
+
+    if (!empresaNombre || empresaActive === '') {
+        showNotification('El nombre de la empresa y su estado son obligatorios', 'warning');
+        return;
+    }
+
     const empresaData = {
-        nombre: document.getElementById('empresaNombre').value,
+        nombre: empresaNombre,
         cif: document.getElementById('empresaCif').value,
         direccion: document.getElementById('empresaDireccion').value,
         telefono: document.getElementById('empresaTelefono').value,
         email: document.getElementById('empresaEmail').value,
-        activo: parseInt(document.getElementById('empresaActive').value),
+        activo: parseInt(empresaActive),
         verifactu: document.getElementById('empresaVerifactu').checked ? 1 : 0,
         _csrf: csrfToken
     };
@@ -1091,11 +1234,11 @@ async function loadTickets() {
     } catch (error) {
         console.error('Error loading tickets:', error);
         document.getElementById('ticketsTableContainer').innerHTML = `
-                    <div class="empty-state">
-                        <i class="fas fa-exclamation-triangle"></i>
-                        <p>Error al cargar los tickets</p>
-                    </div>
-                `;
+            <div class="empty-state">
+                <i class="fas fa-exclamation-triangle"></i>
+                <p>Error al cargar los tickets</p>
+            </div>
+            `;
     }
 }
 
@@ -1120,11 +1263,11 @@ async function loadArchivedTickets() {
     } catch (error) {
         console.error('Error loading archived tickets:', error);
         document.getElementById('ticketsTableContainer').innerHTML = `
-                    <div class="empty-state">
-                        <i class="fas fa-exclamation-triangle"></i>
-                        <p>Error al cargar los tickets archivados</p>
-                    </div>
-                `;
+            <div class="empty-state">
+                <i class="fas fa-exclamation-triangle"></i>
+                <p>Error al cargar los tickets archivados</p>
+            </div>
+            `;
     }
 }
 
@@ -1133,11 +1276,11 @@ function renderArchivedTickets(tickets) {
 
     if (tickets.length === 0) {
         container.innerHTML = `
-                    <div class="empty-state">
-                        <i class="fas fa-archive"></i>
-                        <p>No hay tickets archivados</p>
-                    </div>
-                `;
+            <div class="empty-state">
+                <i class="fas fa-archive"></i>
+                <p>No hay tickets archivados</p>
+            </div>
+            `;
         return;
     }
 
@@ -1145,11 +1288,13 @@ function renderArchivedTickets(tickets) {
         'construccion': 'Construcción',
         'reparacion': 'Reparación',
         'obras': 'Obras',
-        'fugas': 'Búsqueda de Fugas'
+        'fugas': 'Búsqueda de Fugas',
+        'fontaneria': 'Fontanería',
+        'electricidad': 'Electricidad'
     };
 
     const html = `
-                <table>
+            <table>
                     <thead>
                         <tr>
                             <th>Ticket ID</th>
@@ -1236,11 +1381,11 @@ function renderTicketsTable() {
 
     if (filteredTickets.length === 0) {
         container.innerHTML = `
-                    <div class="empty-state">
-                        <i class="fas fa-inbox"></i>
-                        <p>No hay tickets para mostrar</p>
-                    </div>
-                `;
+            <div class="empty-state">
+                <i class="fas fa-inbox"></i>
+                <p>No hay tickets para mostrar</p>
+            </div>
+            `;
         applyPermissions();
         return;
     }
@@ -1253,42 +1398,46 @@ function renderTicketsTable() {
     };
 
     const html = `
-                <table>
+            <div class="table-responsive">
+                <table class="tickets-table">
                     <thead>
                         <tr>
-                            <th>Ticket ID</th>
+                            <th>ID</th>
                             <th>Cliente</th>
+                            <th>Técnico</th>
                             <th>Servicio</th>
                             <th>Prioridad</th>
                             <th>Estado</th>
                             <th>Fecha</th>
-                            <th>Acciones</th>
+                            <th class="no-print">Acciones</th>
                         </tr>
                     </thead>
                     <tbody>
                         ${filteredTickets.map(ticket => `
                             <tr>
-                                <td><strong>${ticket.ticket_id}</strong></td>
+                                <td><span class="id-badge">${ticket.ticket_id.split('-').pop()}</span></td>
+                                <td><strong>${ticket.nombre}</strong></td>
                                 <td>
-                                    ${ticket.nombre}
-                                    ${ticket.tecnico_asignado ? `<br><small style="color: #2563eb;"><i class="fas fa-user"></i> ${ticket.tecnico_asignado}</small>` : ''}
+                                    ${ticket.tecnico_asignado ?
+            `<span class="tecnico-badge"><i class="fas fa-user-gear"></i> ${ticket.tecnico_asignado}</span>` :
+            '<span class="tecnico-none">Sin asignar</span>'}
                                 </td>
                                 <td>${servicios[ticket.servicio] || ticket.servicio}</td>
                                 <td><span class="badge badge-${ticket.prioridad}">${ticket.prioridad}</span></td>
                                 <td><span class="badge badge-${ticket.estado}">${ticket.estado.replace('_', ' ')}</span></td>
                                 <td>${new Date(ticket.fecha_creacion).toLocaleDateString('es-ES')}</td>
-                                <td>
+                                <td class="no-print">
                                     <div class="action-btns">
-                                        <button class="btn-small btn-view" onclick="viewTicket('${ticket.ticket_id}')">
-                                            <i class="fas fa-eye"></i> Ver
+                                        <button class="btn-action btn-view" title="Ver" onclick="viewTicket('${ticket.ticket_id}')">
+                                            <i class="fas fa-eye"></i>
                                         </button>
-                                        <button class="btn-small btn-edit" onclick="editTicket('${ticket.ticket_id}')">
-                                            <i class="fas fa-edit"></i> Editar
+                                        <button class="btn-action btn-edit" title="Editar" onclick="editTicket('${ticket.ticket_id}')">
+                                            <i class="fas fa-edit"></i>
                                         </button>
-                                        <button class="btn-small btn-delete" onclick="deleteTicket('${ticket.ticket_id}')">
-                                            <i class="fas fa-trash"></i> Borrar
+                                        <button class="btn-action btn-delete" title="Borrar" onclick="deleteTicket('${ticket.ticket_id}')">
+                                            <i class="fas fa-trash"></i>
                                         </button>
-                                        <button class="btn-whatsapp-quick" onclick="openWhatsApp('${ticket.telefono}', '${ticket.ticket_id}', '${ticket.nombre}')">
+                                        <button class="btn-action btn-whatsapp" title="WhatsApp" onclick="openWhatsApp('${ticket.telefono}', '${ticket.ticket_id}', '${ticket.nombre}')">
                                             <i class="fab fa-whatsapp"></i>
                                         </button>
                                     </div>
@@ -1297,6 +1446,7 @@ function renderTicketsTable() {
                         `).join('')}
                     </tbody>
                 </table>
+            </div>
             `;
 
     container.innerHTML = html;
@@ -1327,23 +1477,37 @@ async function viewTicket(ticketId) {
             fetch(`/api/tickets/${ticketId}/invoices`) // For invoices
         ]);
 
+        if (!ticketResponse.ok) {
+            const errorData = await ticketResponse.json();
+            throw new Error(errorData.error || 'Ticket no encontrado');
+        }
+
         const ticket = await ticketResponse.json();
-        const notes = await notesResponse.json();
-        const whatsappContacts = await whatsappResponse.json();
-        const horasData = await horasResponse.json();
-        const ticketMaterials = await materialsResponse.json();
-        const users = await usersResponse.json();
-        const allMaterials = await allMaterialsResponse.json();
-        const empresas = await empresasResponse.json();
-        const invoices = await invoicesResponse.json();
+        const notes = notesResponse.ok ? await notesResponse.json() : [];
+        const whatsappContacts = whatsappResponse.ok ? await whatsappResponse.json() : [];
+        const horasData = horasResponse.ok ? await horasResponse.json() : { total: 0, horas: [], porTecnico: [] };
+        const ticketMaterials = materialsResponse.ok ? await materialsResponse.json() : [];
+        const users = usersResponse.ok ? await usersResponse.json() : [];
+        const allMaterials = allMaterialsResponse.ok ? await allMaterialsResponse.json() : [];
+        const empresas = empresasResponse.ok ? await empresasResponse.json() : [];
+        const invoices = invoicesResponse.ok ? await invoicesResponse.json() : [];
 
         const operatives = users.filter(u => u.rol === 'tecnico' && u.activo);
 
-        const servicios = {
+        const serviciosMapping = {
             'construccion': 'Construcción',
             'reparacion': 'Reparación',
             'obras': 'Obras',
-            'fugas': 'Búsqueda de Fugas'
+            'fugas': 'Búsqueda de Fugas',
+            'fontaneria': 'Fontanería',
+            'electricidad': 'Electricidad'
+        };
+
+        const getServiceLabel = (service) => {
+            if (!service) return 'No especificado';
+            // Try to match lowercase slug
+            const slug = service.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+            return serviciosMapping[slug] || service;
         };
 
         const notesHtml = notes.length > 0 ? notes.map(note => `
@@ -1419,6 +1583,10 @@ async function viewTicket(ticketId) {
                             <button class="btn-small btn-view" onclick="viewInvoice('${inv.factura_id}')">
                                 <i class="fas fa-eye"></i> Ver
                             </button>
+                            ${!inv.bloqueada ? `
+                            <button class="btn-small btn-edit" onclick="editInvoice('${inv.factura_id}')">
+                                <i class="fas fa-edit"></i> Editar
+                            </button>` : ''}
                         </div>
                     </div>
                 `).join('') : '<p style="color: #6b7280;">No hay facturas para este ticket</p>';
@@ -1442,18 +1610,18 @@ async function viewTicket(ticketId) {
                     </div>
                     <div class="detail-row">
                         <div class="detail-label">Servicio</div>
-                        <div>${servicios[ticket.servicio]}</div>
+                        <div>${getServiceLabel(ticket.servicio)}</div>
                     </div>
                     <div class="detail-row">
                         <div class="detail-label">Empresa</div>
                         <div>
-                            ${ticket.empresa_id ? (() => {
-                const empresa = empresas.find(e => e.id === ticket.empresa_id);
-                return empresa ? `<strong>${empresa.nombre}</strong>` : 'Sin empresa';
-            })() : 'Sin empresa'}
-                            ${isAdmin ? `<button class="btn" style="background: #6366f1; margin-left: 1rem; padding: 0.3rem 0.8rem; font-size: 0.875rem;" onclick="showTransferirEmpresaModal('${ticket.ticket_id}', ${ticket.empresa_id || 'null'})">
+                            ${(() => {
+                const empresa = ticket.empresa_id ? empresas.find(e => e.id === ticket.empresa_id) : null;
+                const empresaNombre = empresa ? empresa.nombre : 'Sin empresa asignada';
+                return `<strong>${empresaNombre}</strong> ${isAdmin ? `<button class="btn" style="background: #6366f1; margin-left: 1rem; padding: 0.3rem 0.8rem; font-size: 0.875rem;" onclick="showTransferirEmpresaModal('${ticket.ticket_id}', ${ticket.empresa_id || 'null'}, '${empresaNombre.replace(/'/g, "\\'")}')">
                                 <i class="fas fa-exchange-alt"></i> Transferir
-                            </button>` : ''}
+                            </button>` : ''}`;
+            })()}
                         </div>
                     </div>
                     <div class="detail-row">
@@ -1472,7 +1640,7 @@ async function viewTicket(ticketId) {
                     <div class="whatsapp-section">
                         <h3><i class="fab fa-whatsapp"></i> Contactar por WhatsApp</h3>
                         <div class="whatsapp-templates">
-                            <button class="template-btn" onclick="setWhatsAppMessage('Hola ${ticket.nombre}, somos del servicio técnico. Hemos recibido tu solicitud ${ticket.ticket_id} sobre ${servicios[ticket.servicio]}. ¿En qué momento podemos visitarte?')">
+                            <button class="template-btn" onclick="setWhatsAppMessage('Hola ${ticket.nombre}, somos del servicio técnico. Hemos recibido tu solicitud ${ticket.ticket_id} sobre ${getServiceLabel(ticket.servicio)}. ¿En qué momento podemos visitarte?')">
                                 📅 Solicitar visita
                             </button>
                             <button class="template-btn" onclick="setWhatsAppMessage('Hola ${ticket.nombre}, te informamos que estamos trabajando en tu caso ${ticket.ticket_id}. Te mantendremos informado del progreso.')">
@@ -1719,8 +1887,14 @@ async function addHorasTrabajo(ticketId) {
             document.getElementById('descripcionHoras').value = '';
             viewTicket(ticketId);
         } else {
-            const result = await response.json();
-            showNotification('Error: ' + result.error, 'error');
+            let errorMsg = 'Error al registrar horas';
+            try {
+                const result = await response.json();
+                errorMsg = result.error || errorMsg;
+            } catch (e) {
+                console.error('Could not parse error response:', e);
+            }
+            showNotification(errorMsg, 'error');
         }
     } catch (error) {
         console.error('Error registrando horas:', error);
@@ -1975,16 +2149,27 @@ async function saveTicketEdit() {
     const ticketId = document.getElementById('editTicketId').value;
     const empresaId = document.getElementById('editTicketEmpresa').value;
 
+    const nombre = document.getElementById('editTicketNombre').value;
+    const email = document.getElementById('editTicketEmail').value;
+    const telefono = document.getElementById('editTicketTelefono').value;
+    const servicio = document.getElementById('editTicketServicio').value;
+    const descripcion = document.getElementById('editTicketDescripcion').value;
+
+    if (!nombre || !email || !telefono || !servicio || !descripcion) {
+        showNotification('Por favor complete todos los campos obligatorios del ticket', 'warning');
+        return;
+    }
+
     const ticketData = {
-        nombre: document.getElementById('editTicketNombre').value,
-        email: document.getElementById('editTicketEmail').value,
-        telefono: document.getElementById('editTicketTelefono').value,
-        servicio: document.getElementById('editTicketServicio').value,
+        nombre,
+        email,
+        telefono,
+        servicio,
         empresa_id: empresaId ? parseInt(empresaId) : null,
         prioridad: document.getElementById('editTicketPrioridad').value,
         estado: document.getElementById('editTicketEstado').value,
         tecnico_asignado: document.getElementById('editTicketTecnico').value,
-        descripcion: document.getElementById('editTicketDescripcion').value
+        descripcion
     };
 
     try {
@@ -2080,6 +2265,14 @@ async function logout() {
     }
 }
 
+// Mobile menu toggle function
+function toggleMobileMenu() {
+    const nav = document.getElementById('headerNav');
+    if (nav) {
+        nav.classList.toggle('active');
+    }
+}
+
 // Close modal functions
 function closeEditTicketModal() {
     document.getElementById('editTicketModal').style.display = 'none';
@@ -2097,14 +2290,25 @@ function openCreateTicketModal() {
 async function saveNewTicket() {
     const empresaId = document.getElementById('createTicketEmpresa').value;
 
+    const nombre = document.getElementById('createTicketNombre').value;
+    const email = document.getElementById('createTicketEmail').value;
+    const telefono = document.getElementById('createTicketTelefono').value;
+    const servicio = document.getElementById('createTicketServicio').value;
+    const descripcion = document.getElementById('createTicketDescripcion').value;
+
+    if (!nombre || !email || !telefono || !servicio || !descripcion) {
+        showNotification('Por favor complete todos los campos obligatorios para el nuevo ticket', 'warning');
+        return;
+    }
+
     const ticketData = {
-        nombre: document.getElementById('createTicketNombre').value,
-        email: document.getElementById('createTicketEmail').value,
-        telefono: document.getElementById('createTicketTelefono').value,
-        servicio: document.getElementById('createTicketServicio').value,
+        nombre,
+        email,
+        telefono,
+        servicio,
         empresa_id: empresaId ? parseInt(empresaId) : null,
         prioridad: document.getElementById('createTicketPrioridad').value,
-        descripcion: document.getElementById('createTicketDescripcion').value
+        descripcion
     };
 
     try {
@@ -2185,9 +2389,12 @@ async function loadBackups() {
                                     <strong>Fecha:</strong> ${backup.createdReadable}
                                 </p>
                             </div>
-                            <div style="display: flex; gap: 0.5rem;">
+                            <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
                                 <button onclick="downloadBackup('${backup.name}')" class="btn-primary" style="padding: 0.5rem 1rem; font-size: 0.875rem;">
                                     <i class="fas fa-download"></i> Descargar
+                                </button>
+                                <button onclick="restoreBackup('${backup.name}')" class="btn-warning" style="padding: 0.5rem 1rem; font-size: 0.875rem; background: #f59e0b; border: none; color: white; border-radius: 5px; cursor: pointer;">
+                                    <i class="fas fa-undo"></i> Restaurar
                                 </button>
                                 <button onclick="deleteBackup('${backup.name}', event)" class="btn-danger" style="padding: 0.5rem 1rem; font-size: 0.875rem; background: #ef4444; border: none; color: white; border-radius: 5px; cursor: pointer;">
                                     <i class="fas fa-trash"></i> Eliminar
@@ -2219,7 +2426,12 @@ async function createBackupNow(event) {
             btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Creando...';
         }
 
+        console.log('[createBackupNow] CSRF Token:', csrfToken);
+
         const response = await fetch('/api/backups/create', { method: 'POST', headers: { 'csrf-token': csrfToken } });
+
+        console.log('[createBackupNow] Response status:', response.status);
+
         const data = await response.json();
 
         // Add delay before showing result
@@ -2228,12 +2440,17 @@ async function createBackupNow(event) {
         if (data.success) {
             const message = `Archivo: ${data.backup.name}\nTamaño: ${data.backup.sizeReadable}\n\n${data.note || ''}`;
             showNotification(message, 'success', 0, 'Backup Creado');
+
+            // Auto-descargar el backup generado
+            downloadBackup(data.backup.name);
+
             loadBackups();
         } else {
             showNotification(data.error || 'Error desconocido', 'error', 0);
         }
     } catch (error) {
-        showNotification(error.message, 'error', 0);
+        console.error('[createBackupNow] Error:', error);
+        showNotification('Error al crear backup: ' + error.message, 'error', 0);
     } finally {
         if (btn) {
             btn.disabled = false;
@@ -2247,6 +2464,28 @@ function downloadBackup(filename) {
     link.href = `/api/backups/download/${filename}`;
     link.download = filename;
     link.click();
+}
+
+async function restoreBackup(filename) {
+    const userConfirmed = await showConfirm(`¿Estás seguro de que deseas restaurar el backup "${filename}"? Esta acción reemplazará todos los datos actuales de la sesión.`, 'Restaurar Backup');
+    if (!userConfirmed) return;
+
+    try {
+        const response = await fetch(`/api/backups/restore/${filename}`, {
+            method: 'POST',
+            headers: { 'csrf-token': csrfToken }
+        });
+        const data = await response.json();
+
+        if (data.success) {
+            showNotification('✅ Backup restaurado exitosamente. Recargando...', 'success');
+            setTimeout(() => location.reload(), 1500);
+        } else {
+            showNotification('❌ Error: ' + data.error, 'error');
+        }
+    } catch (error) {
+        showNotification('Error al restaurar: ' + error.message, 'error');
+    }
 }
 
 async function deleteBackup(filename, event) {
@@ -2279,8 +2518,8 @@ async function uploadBackup(event) {
     const file = event.target.files[0];
     if (!file) return;
 
-    if (!file.name.endsWith('.tar.gz')) {
-        showNotification('❌ El archivo debe ser .tar.gz', 'warning');
+    if (!file.name.endsWith('.json')) {
+        showNotification('❌ El archivo debe ser .json', 'warning');
         return;
     }
 
@@ -2296,8 +2535,8 @@ async function uploadBackup(event) {
         const data = await response.json();
 
         if (data.success) {
-            showNotification(`✅ Backup subido: ${file.name}\n\nPara restaurar, ejecuta en el servidor: node restore.js`, 'success', 0);
-            loadBackups();
+            showNotification(`✅ Backup restaurado exitosamente: ${file.name}. Recargando...`, 'success', 0);
+            setTimeout(() => location.reload(), 1500);
         } else {
             showNotification('❌ Error: ' + data.error, 'error');
         }
@@ -2386,6 +2625,7 @@ function showUserForm(user = null) {
     } else {
         title.textContent = 'Nuevo Usuario';
         form.reset();
+        document.getElementById('userId').value = ''; // Ensure ID is cleared for new user
         document.getElementById('username').disabled = false;
         document.getElementById('password').required = true;
         document.getElementById('nombreCompleto').value = '';
@@ -2399,6 +2639,7 @@ function showUserForm(user = null) {
 function cancelUserForm() {
     document.getElementById('userFormContainer').style.display = 'none';
     document.getElementById('userForm').reset();
+    document.getElementById('userId').value = '';
 }
 
 async function saveUser(event) {
@@ -2407,11 +2648,18 @@ async function saveUser(event) {
     const userId = document.getElementById('userId').value;
     const username = document.getElementById('username').value;
     const password = document.getElementById('password').value;
+    const rol = document.getElementById('rol').value;
+    const activoVal = document.getElementById('activo').value;
+
+    if (!username || (!userId && !password) || !rol || activoVal === '') {
+        showNotification('Por favor complete el usuario, la contraseña y el rol', 'warning');
+        return;
+    }
+
     const nombre_completo = document.getElementById('nombreCompleto').value;
     const email = document.getElementById('email').value;
     const whatsapp = document.getElementById('whatsapp').value;
-    const rol = document.getElementById('rol').value;
-    const activo = parseInt(document.getElementById('activo').value);
+    const activo = parseInt(activoVal);
 
     const userData = { username, nombre_completo, email, whatsapp, rol, activo };
 
@@ -2444,7 +2692,15 @@ async function saveUser(event) {
             cancelUserForm();
             loadUsers();
         } else {
-            showNotification(result.error || 'Error al guardar usuario', 'error');
+            // Show detailed error message
+            let errorMsg = result.error || 'Error al guardar usuario';
+
+            // If there are password validation details, show them
+            if (result.details && Array.isArray(result.details)) {
+                errorMsg += ':\n' + result.details.join('\n');
+            }
+
+            showNotification(errorMsg, 'error', 0);
         }
     } catch (error) {
         console.error('Error:', error);
@@ -2585,6 +2841,7 @@ function toggleCalendarPanel() {
 
         panel.style.display = 'block';
         loadAppointments();
+        populateAppoTechnicianFilter();
     } else {
         panel.style.display = 'none';
     }
@@ -2598,7 +2855,28 @@ async function loadAppointments() {
         const response = await fetch('/api/appointments', {
             headers: { 'csrf-token': csrfToken }
         });
-        const appointments = await response.json();
+        let appointments = await response.json();
+
+        // Apply filters
+        const technicianId = document.getElementById('filterAppoTecnico').value;
+        const fechaInicio = document.getElementById('filterAppoFechaInicio').value;
+        const fechaFin = document.getElementById('filterAppoFechaFin').value;
+
+        if (technicianId) {
+            appointments = appointments.filter(a => a.tecnico_id == technicianId);
+        }
+
+        if (fechaInicio) {
+            const start = new Date(fechaInicio);
+            start.setHours(0, 0, 0, 0);
+            appointments = appointments.filter(a => new Date(a.fecha_cita) >= start);
+        }
+
+        if (fechaFin) {
+            const end = new Date(fechaFin);
+            end.setHours(23, 59, 59, 999);
+            appointments = appointments.filter(a => new Date(a.fecha_cita) <= end);
+        }
 
         if (appointments.length === 0) {
             calendarView.innerHTML = '<div style="text-align: center; padding: 2rem; color: #6b7280;">No hay citas programadas</div>';
@@ -2650,6 +2928,11 @@ async function loadAppointments() {
 }
 
 function showTicketFromAppointment(ticketId) {
+    console.log('Opening ticket from appointment:', ticketId);
+    if (!ticketId || ticketId === 'undefined') {
+        showNotification('ID de ticket no válido en la cita', 'error');
+        return;
+    }
     toggleCalendarPanel();
     viewTicket(ticketId);
 }
@@ -2675,6 +2958,130 @@ async function deleteAppointment(id) {
         console.error('Error:', error);
         showNotification('Error al eliminar cita', 'error');
     }
+}
+
+async function populateAppoTechnicianFilter() {
+    const select = document.getElementById('filterAppoTecnico');
+    if (select.options.length > 1) return; // Already populated
+
+    try {
+        const response = await fetch('/api/usuarios');
+        const users = await response.json();
+        const technicians = users.filter(u => u.activo);
+
+        technicians.forEach(t => {
+            const option = document.createElement('option');
+            option.value = t.id;
+            option.textContent = t.nombre_completo || t.username;
+            select.appendChild(option);
+        });
+    } catch (error) {
+        console.error('Error populating technicians filter:', error);
+    }
+}
+
+async function exportAppointmentsCSV() {
+    try {
+        const response = await fetch('/api/appointments', {
+            headers: { 'csrf-token': csrfToken }
+        });
+        const appointments = await response.json();
+
+        if (appointments.length === 0) {
+            showNotification('No hay citas para exportar', 'warning');
+            return;
+        }
+
+        let csv = 'Fecha;Hora;Cliente;Tecnico;Descripcion;Estado\r\n';
+        appointments.forEach(cita => {
+            const date = new Date(cita.fecha_cita);
+            const fechaStr = date.toLocaleDateString('es-ES');
+            const horaStr = date.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+
+            csv += `"${fechaStr}";"${horaStr}";"${cita.cliente_nombre.replace(/"/g, '""')}";"${(cita.tecnico_nombre || 'Sin asignar').replace(/"/g, '""')}";"${(cita.descripcion || '').replace(/"/g, '""')}";"${cita.estado}"\r\n`;
+        });
+
+        const blob = new Blob(["\uFEFF" + csv], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        const url = URL.createObjectURL(blob);
+        link.setAttribute('href', url);
+        link.setAttribute('download', `Agenda_Citas_${new Date().toISOString().split('T')[0]}.csv`);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    } catch (error) {
+        console.error('Error exporting CSV:', error);
+        showNotification('Error al exportar agenda', 'error');
+    }
+}
+
+function printAppointmentsAgenda() {
+    const calendarView = document.getElementById('calendarView');
+    const table = calendarView.querySelector('table');
+
+    if (!table) {
+        showNotification('No hay datos en la agenda para imprimir', 'warning');
+        return;
+    }
+
+    const printWindow = window.open('', '_blank');
+    const dateStr = new Date().toLocaleDateString('es-ES');
+
+    printWindow.document.write(`
+        <html>
+            <head>
+                <title>Agenda de Citas - FONT MULTISERVEIS Y PLAZERO</title>
+                <style>
+                    body { font-family: 'Segoe UI', sans-serif; padding: 20px; color: #333; }
+                    .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #2563eb; padding-bottom: 15px; margin-bottom: 30px; }
+                    .logo { font-size: 24px; font-weight: bold; color: #2563eb; }
+                    h1 { margin: 0; font-size: 20px; }
+                    .date { color: #666; }
+                    table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+                    th { background: #f3f4f6; text-align: left; padding: 12px; border: 1px solid #e5e7eb; font-weight: 600; }
+                    td { padding: 12px; border: 1px solid #e5e7eb; vertical-align: top; }
+                    .badge { display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 600; text-transform: uppercase; }
+                    .badge-pendiente { background: #fef3c7; color: #92400e; }
+                    .badge-en_proceso { background: #dbeafe; color: #1e40af; }
+                    .badge-resuelto { background: #d1fae5; color: #065f46; }
+                    @media print {
+                        @page { size: A4; margin: 1cm; }
+                        button { display: none; }
+                    }
+                </style>
+            </head>
+            <body>
+                <div class="header">
+                    <div class="logo">FONT MULTISERVEIS Y PLAZERO</div>
+                    <div>
+                        <h1>AGENDA DE CITAS</h1>
+                        <div class="date">${dateStr}</div>
+                    </div>
+                </div>
+                ${table.outerHTML}
+                <div style="margin-top: 40px; text-align: center; color: #999; font-size: 12px;">
+                    © 2026 FONT MULTISERVEIS Y PLAZERO - Documento generado automáticamente
+                </div>
+            </body>
+        </html>
+    `);
+
+    printWindow.document.close();
+    printWindow.focus();
+
+    // Hide actions column in print
+    const rows = printWindow.document.querySelectorAll('tr');
+    rows.forEach(row => {
+        if (row.cells.length > 0) {
+            row.deleteCell(-1); // Remove last column (Actions)
+        }
+    });
+
+    setTimeout(() => {
+        printWindow.print();
+        printWindow.close();
+    }, 500);
 }
 
 // Appointment Creation Functions
@@ -2747,6 +3154,11 @@ async function saveAppointment() {
     const fecha_cita = document.getElementById('appoFecha').value;
     const descripcion = document.getElementById('appoDescripcion').value;
 
+    if (!tecnico_id || !fecha_cita) {
+        showNotification('Por favor complete el técnico y la fecha', 'warning');
+        return;
+    }
+
     try {
         const response = await fetch('/api/appointments', {
             method: 'POST',
@@ -2754,7 +3166,13 @@ async function saveAppointment() {
                 'Content-Type': 'application/json',
                 'csrf-token': csrfToken
             },
-            body: JSON.stringify({ ticket_id, tecnico_id, fecha_cita, descripcion })
+            body: JSON.stringify({
+                ticket_id,
+                tecnico_id,
+                fecha_cita,
+                descripcion,
+                _csrf: csrfToken
+            })
         });
 
         if (response.ok) {
@@ -2835,12 +3253,19 @@ async function loadFacturas() {
                 ? '<span class="badge badge-active"><i class="fas fa-lock"></i> Sí</span>'
                 : '<span class="badge badge-inactive">No</span>';
 
-            // Action buttons
             let actionButtons = `
                 <button class="btn-icon btn-view" onclick="viewInvoice('${factura.factura_id}')" title="Ver factura">
                     <i class="fas fa-eye"></i>
                 </button>
             `;
+
+            if (!isBloqueada) {
+                actionButtons += `
+                    <button class="btn-icon btn-edit" onclick="editInvoice('${factura.factura_id}')" title="Editar factura">
+                        <i class="fas fa-edit"></i>
+                    </button>
+                `;
+            }
 
             if (!isBloqueada) {
                 actionButtons += `
@@ -2956,5 +3381,153 @@ async function deleteFactura(facturaId) {
     } catch (error) {
         console.error('Error eliminando factura:', error);
         showNotification('Error al eliminar la factura', 'error');
+    }
+}
+
+async function editInvoice(invoiceId) {
+    try {
+        const response = await fetch(`/api/invoices/${invoiceId}`, {
+            headers: { 'csrf-token': csrfToken }
+        });
+        const invoice = await response.json();
+
+        if (invoice.bloqueada === 1) {
+            showNotification('❌ Esta factura está bloqueada y no se puede editar', 'error');
+            return;
+        }
+
+        // Fill form
+        document.getElementById('editInvoiceId').value = invoice.id;
+        document.getElementById('editInvoiceFacturaId').value = invoice.factura_id;
+        document.getElementById('editInvoiceCliente').value = invoice.cliente_nombre || '';
+        document.getElementById('editInvoiceEmail').value = invoice.cliente_email || '';
+        document.getElementById('editInvoiceEstado').value = invoice.estado || 'borrador';
+
+        if (invoice.fecha_vencimiento) {
+            document.getElementById('editInvoiceVencimiento').value = new Date(invoice.fecha_vencimiento).toISOString().split('T')[0];
+        } else {
+            document.getElementById('editInvoiceVencimiento').value = '';
+        }
+
+        // Clear and fill items
+        const itemsBody = document.getElementById('editInvoiceItemsBody');
+        itemsBody.innerHTML = '';
+
+        if (invoice.items && invoice.items.length > 0) {
+            invoice.items.forEach(item => addInvoiceItemRow(item));
+        } else {
+            addInvoiceItemRow(); // Add one empty row if no items
+        }
+
+        calculateEditInvoiceTotals();
+        document.getElementById('editInvoiceModal').classList.add('active');
+    } catch (error) {
+        console.error('Error loading invoice for edit:', error);
+        showNotification('Error al cargar la factura para editar', 'error');
+    }
+}
+
+function closeEditInvoiceModal() {
+    document.getElementById('editInvoiceModal').classList.remove('active');
+}
+
+function addInvoiceItemRow(item = null) {
+    const tbody = document.getElementById('editInvoiceItemsBody');
+    const row = document.createElement('tr');
+
+    row.innerHTML = `
+        <td><input type="text" class="item-concepto" value="${item ? item.concepto : ''}" placeholder="Concepto" required style="width: 100%;"></td>
+        <td><input type="text" class="item-descripcion" value="${item ? (item.descripcion || '') : ''}" placeholder="Descripción" style="width: 100%;"></td>
+        <td><input type="number" class="item-cantidad" value="${item ? item.cantidad : 1}" min="0.1" step="0.1" onchange="calculateEditInvoiceTotals()" style="width: 100%;"></td>
+        <td><input type="number" class="item-precio" value="${item ? item.precio_unitario : 0}" min="0" step="0.01" onchange="calculateEditInvoiceTotals()" style="width: 100%;"></td>
+        <td class="item-total" style="font-weight: 600;">${item ? (item.cantidad * item.precio_unitario).toFixed(2) : '0.00'} €</td>
+        <td>
+            <button type="button" class="btn-small btn-delete" onclick="this.closest('tr').remove(); calculateEditInvoiceTotals();" title="Quitar ítem">
+                <i class="fas fa-times"></i>
+            </button>
+        </td>
+    `;
+
+    tbody.appendChild(row);
+}
+
+function calculateEditInvoiceTotals() {
+    const rows = document.querySelectorAll('#editInvoiceItemsBody tr');
+    let subtotal = 0;
+
+    rows.forEach(row => {
+        const cant = parseFloat(row.querySelector('.item-cantidad').value) || 0;
+        const precio = parseFloat(row.querySelector('.item-precio').value) || 0;
+        const total = cant * precio;
+
+        row.querySelector('.item-total').textContent = total.toFixed(2) + ' €';
+        subtotal += total;
+    });
+
+    const iva = subtotal * 0.21;
+    const total = subtotal + iva;
+
+    document.getElementById('editInvoiceSubtotal').textContent = subtotal.toFixed(2);
+    document.getElementById('editInvoiceIVA').textContent = iva.toFixed(2);
+    document.getElementById('editInvoiceTotal').textContent = total.toFixed(2);
+}
+
+async function saveInvoiceEdit() {
+    const id = document.getElementById('editInvoiceId').value;
+    const items = [];
+    const rows = document.querySelectorAll('#editInvoiceItemsBody tr');
+
+    rows.forEach(row => {
+        const concepto = row.querySelector('.item-concepto').value.trim();
+        if (concepto) {
+            items.push({
+                concepto: concepto,
+                descripcion: row.querySelector('.item-descripcion').value.trim(),
+                cantidad: parseFloat(row.querySelector('.item-cantidad').value) || 0,
+                precio_unitario: parseFloat(row.querySelector('.item-precio').value) || 0
+            });
+        }
+    });
+
+    if (items.length === 0) {
+        showNotification('❌ La factura debe tener al menos un ítem con concepto', 'warning');
+        return;
+    }
+
+    const data = {
+        cliente_nombre: document.getElementById('editInvoiceCliente').value.trim(),
+        cliente_email: document.getElementById('editInvoiceEmail').value.trim(),
+        fecha_vencimiento: document.getElementById('editInvoiceVencimiento').value,
+        estado: document.getElementById('editInvoiceEstado').value,
+        items: items
+    };
+
+    try {
+        const response = await fetch(`/api/facturas/${id}`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+                'csrf-token': csrfToken
+            },
+            body: JSON.stringify(data)
+        });
+
+        const result = await response.json();
+
+        if (response.ok) {
+            showNotification('✅ Factura actualizada correctamente', 'success');
+            closeEditInvoiceModal();
+            loadFacturas();
+            // Also refresh ticket view if open
+            if (document.getElementById('ticketModal').classList.contains('active')) {
+                const ticketId = document.querySelector('#ticketDetails strong').textContent;
+                viewTicket(ticketId);
+            }
+        } else {
+            showNotification('❌ Error: ' + result.error, 'error');
+        }
+    } catch (error) {
+        console.error('Error saving invoice edit:', error);
+        showNotification('Error al guardar los cambios de la factura', 'error');
     }
 }

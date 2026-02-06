@@ -44,20 +44,8 @@ function sanitizeObject(obj) {
 function validatePasswordStrength(password) {
     const errors = [];
 
-    if (password.length < 12) {
-        errors.push('La contraseña debe tener al menos 12 caracteres');
-    }
-    if (!/[A-Z]/.test(password)) {
-        errors.push('Debe contener al menos una letra mayúscula');
-    }
-    if (!/[a-z]/.test(password)) {
-        errors.push('Debe contener al menos una letra minúscula');
-    }
-    if (!/[0-9]/.test(password)) {
-        errors.push('Debe contener al menos un número');
-    }
-    if (!/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password)) {
-        errors.push('Debe contener al menos un carácter especial');
+    if (password.length < 8) {
+        errors.push('La contraseña debe tener al menos 8 caracteres');
     }
 
     return {

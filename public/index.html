@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="es">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -7,6 +8,7 @@
     <link rel="stylesheet" href="styles.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
+
 <body>
     <!-- Header -->
     <header>
@@ -46,8 +48,9 @@
     <section id="servicios" class="services">
         <div class="container">
             <h2 class="section-title">Nuestros Servicios</h2>
-            <p class="section-subtitle">Ofrecemos soluciones completas de construcción, mantenimiento y detección de fugas</p>
-            
+            <p class="section-subtitle">Ofrecemos soluciones completas de construcción, mantenimiento y detección de
+                fugas</p>
+
             <div class="services-grid">
                 <div class="service-card">
                     <div class="service-icon">
@@ -89,9 +92,9 @@
         <div class="container">
             <h2 class="section-title">Solicitar Servicio Técnico</h2>
             <p class="section-subtitle">Complete el formulario y nos pondremos en contacto con usted</p>
-            
+
             <div class="ticket-form-container">
-                <form id="ticketForm" class="ticket-form">
+                <form id="ticketForm" class="ticket-form" novalidate>
                     <div class="form-row">
                         <div class="form-group">
                             <label for="nombre"><i class="fas fa-user"></i> Nombre Completo *</label>
@@ -132,7 +135,8 @@
 
                     <div class="form-group">
                         <label for="descripcion"><i class="fas fa-comment-alt"></i> Descripción del Problema *</label>
-                        <textarea id="descripcion" name="descripcion" rows="5" required placeholder="Describa detalladamente el problema o servicio que necesita..."></textarea>
+                        <textarea id="descripcion" name="descripcion" rows="5" required
+                            placeholder="Describa detalladamente el problema o servicio que necesita..."></textarea>
                     </div>
 
                     <button type="submit" class="btn btn-primary btn-submit">
@@ -144,27 +148,29 @@
             </div>
 
             <!-- Consulta de Tickets -->
-            <div style="margin-top: 60px; padding: 30px; background: linear-gradient(135deg, #25d366, #128c7e); border-radius: 15px; text-align: center;">
+            <div
+                style="margin-top: 60px; padding: 30px; background: linear-gradient(135deg, #25d366, #128c7e); border-radius: 15px; text-align: center;">
                 <h3 style="color: white; margin-bottom: 15px;">
                     <i class="fab fa-whatsapp"></i> ¿Ya tiene un ticket?
                 </h3>
                 <p style="color: white; margin-bottom: 20px; font-size: 1.1rem;">
                     Consulte el estado, solicite cierre o haga preguntas sobre su ticket por WhatsApp
                 </p>
-                <div style="display: flex; gap: 15px; justify-content: center; flex-wrap: wrap; max-width: 800px; margin: 0 auto;">
-                    <a href="https://wa.me/34654892803?text=Hola,%20quiero%20consultar%20el%20estado%20de%20mi%20ticket" 
-                       target="_blank"
-                       style="display: inline-flex; align-items: center; gap: 10px; background: white; color: #128c7e; padding: 15px 25px; border-radius: 10px; text-decoration: none; font-weight: bold; font-size: 1rem;">
+                <div
+                    style="display: flex; gap: 15px; justify-content: center; flex-wrap: wrap; max-width: 800px; margin: 0 auto;">
+                    <a href="https://wa.me/34654892803?text=Hola,%20quiero%20consultar%20el%20estado%20de%20mi%20ticket"
+                        target="_blank"
+                        style="display: inline-flex; align-items: center; gap: 10px; background: white; color: #128c7e; padding: 15px 25px; border-radius: 10px; text-decoration: none; font-weight: bold; font-size: 1rem;">
                         <i class="fas fa-search"></i> Consultar Estado
                     </a>
-                    <a href="https://wa.me/34654892803?text=Hola,%20mi%20problema%20ya%20está%20resuelto.%20Por%20favor,%20cierren%20mi%20ticket" 
-                       target="_blank"
-                       style="display: inline-flex; align-items: center; gap: 10px; background: rgba(255,255,255,0.9); color: #128c7e; padding: 15px 25px; border-radius: 10px; text-decoration: none; font-weight: bold; font-size: 1rem;">
+                    <a href="https://wa.me/34654892803?text=Hola,%20mi%20problema%20ya%20está%20resuelto.%20Por%20favor,%20cierren%20mi%20ticket"
+                        target="_blank"
+                        style="display: inline-flex; align-items: center; gap: 10px; background: rgba(255,255,255,0.9); color: #128c7e; padding: 15px 25px; border-radius: 10px; text-decoration: none; font-weight: bold; font-size: 1rem;">
                         <i class="fas fa-check-circle"></i> Solicitar Cierre
                     </a>
-                    <a href="https://wa.me/34654892803?text=Hola,%20tengo%20una%20consulta%20sobre%20mi%20ticket" 
-                       target="_blank"
-                       style="display: inline-flex; align-items: center; gap: 10px; background: rgba(255,255,255,0.85); color: #128c7e; padding: 15px 25px; border-radius: 10px; text-decoration: none; font-weight: bold; font-size: 1rem;">
+                    <a href="https://wa.me/34654892803?text=Hola,%20tengo%20una%20consulta%20sobre%20mi%20ticket"
+                        target="_blank"
+                        style="display: inline-flex; align-items: center; gap: 10px; background: rgba(255,255,255,0.85); color: #128c7e; padding: 15px 25px; border-radius: 10px; text-decoration: none; font-weight: bold; font-size: 1rem;">
                         <i class="fas fa-comments"></i> Hacer Consulta
                     </a>
                 </div>
@@ -183,13 +189,15 @@
                 <div class="contact-item">
                     <i class="fas fa-envelope"></i>
                     <h3>Email</h3>
-                    <p><a href="mailto:pla.zero@hotmail.com" style="color: inherit; text-decoration: none;">pla.zero@hotmail.com</a></p>
+                    <p><a href="mailto:pla.zero@hotmail.com"
+                            style="color: inherit; text-decoration: none;">pla.zero@hotmail.com</a></p>
                 </div>
                 <div class="contact-item">
                     <i class="fas fa-phone"></i>
                     <h3>Teléfono</h3>
                     <p><a href="tel:+34654892803" style="color: inherit; text-decoration: none;">+34 654 892 803</a></p>
-                    <a href="https://wa.me/34654892803" target="_blank" style="color: #25d366; text-decoration: none; font-size: 0.9rem; display: inline-flex; align-items: center; gap: 0.5rem; margin-top: 0.5rem;">
+                    <a href="https://wa.me/34654892803" target="_blank"
+                        style="color: #25d366; text-decoration: none; font-size: 0.9rem; display: inline-flex; align-items: center; gap: 0.5rem; margin-top: 0.5rem;">
                         <i class="fab fa-whatsapp"></i> WhatsApp
                     </a>
                 </div>
@@ -210,10 +218,12 @@
     </footer>
 
     <!-- WhatsApp Floating Button -->
-    <a href="https://wa.me/34654892803?text=Hola,%20les%20contacto%20desde%20la%20web.%20Necesito%20ayuda%20con%20servicios%20inform%C3%A1ticos" class="whatsapp-float" target="_blank" aria-label="Contactar por WhatsApp" title="Contactar por WhatsApp">
+    <a href="https://wa.me/34654892803?text=Hola,%20les%20contacto%20desde%20la%20web.%20Necesito%20ayuda%20con%20servicios%20inform%C3%A1ticos"
+        class="whatsapp-float" target="_blank" aria-label="Contactar por WhatsApp" title="Contactar por WhatsApp">
         <i class="fab fa-whatsapp"></i>
     </a>
 
     <script src="script.js"></script>
 </body>
+
 </html>

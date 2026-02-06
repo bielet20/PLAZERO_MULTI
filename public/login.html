@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="es">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -174,6 +175,7 @@
         }
     </style>
 </head>
+
 <body>
     <div class="login-container">
         <div class="login-header">
@@ -184,7 +186,7 @@
 
         <div id="alert" class="alert"></div>
 
-        <form id="loginForm">
+        <form id="loginForm" novalidate>
             <div class="form-group">
                 <label for="username">
                     <i class="fas fa-user"></i> Usuario
@@ -211,13 +213,85 @@
         </form>
 
         <div class="back-link">
+            <a href="#" id="forgotPasswordLink"
+                style="display: block; margin-bottom: 0.5rem; color: #666; font-size: 0.9rem;">
+                ¿Has olvidado tu contraseña?
+            </a>
             <a href="/">
                 <i class="fas fa-arrow-left"></i> Volver a la página principal
             </a>
         </div>
     </div>
 
+    <!-- Modal Recuperación -->
+    <div id="forgotModal"
+        style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center;">
+        <div
+            style="background: white; padding: 2rem; border-radius: 15px; width: 90%; max-width: 400px; box-shadow: 0 10px 30px rgba(0,0,0,0.2);">
+            <h2 style="margin-bottom: 1rem; font-size: 1.5rem; color: #333;">Recuperar Contraseña</h2>
+            <p style="margin-bottom: 1.5rem; color: #666; font-size: 0.9rem;">Introduce tu nombre de usuario para
+                recibir un enlace de recuperación.</p>
+            <div class="form-group">
+                <input type="text" id="recoveryUsername" placeholder="Nombre de usuario" style="padding: 0.8rem 1rem;">
+            </div>
+            <div style="display: flex; gap: 10px; margin-top: 1.5rem;">
+                <button id="cancelRecovery"
+                    style="flex: 1; padding: 0.8rem; border: 1px solid #ddd; background: #f9f9f9; border-radius: 8px; cursor: pointer;">Cancelar</button>
+                <button id="sendRecovery"
+                    style="flex: 2; padding: 0.8rem; border: none; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-radius: 8px; cursor: pointer; font-weight: bold;">Enviar</button>
+            </div>
+        </div>
+    </div>
+
     <script>
+        const forgotPasswordLink = document.getElementById('forgotPasswordLink');
+        const forgotModal = document.getElementById('forgotModal');
+        const cancelRecovery = document.getElementById('cancelRecovery');
+        const sendRecovery = document.getElementById('sendRecovery');
+
+        forgotPasswordLink.addEventListener('click', (e) => {
+            e.preventDefault();
+            forgotModal.style.display = 'flex';
+        });
+
+        cancelRecovery.addEventListener('click', () => {
+            forgotModal.style.display = 'none';
+        });
+
+        sendRecovery.addEventListener('click', async () => {
+            const username = document.getElementById('recoveryUsername').value;
+            if (!username) {
+                alert('Por favor, introduce tu usuario');
+                return;
+            }
+
+            sendRecovery.disabled = true;
+            sendRecovery.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Enviando...';
+
+            try {
+                const response = await fetch('/api/forgot-password', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username })
+                });
+
+                const data = await response.json();
+
+                // Show notification (reusing alert element from login)
+                const mainAlert = document.getElementById('alert');
+                mainAlert.className = response.ok ? 'alert success' : 'alert error';
+                mainAlert.textContent = response.ok ? '✓ ' + data.message : '✗ ' + data.message;
+                mainAlert.style.display = 'block';
+
+                forgotModal.style.display = 'none';
+            } catch (error) {
+                console.error('Error:', error);
+                window.alert('Error al procesar la solicitud');
+            } finally {
+                sendRecovery.disabled = false;
+                sendRecovery.innerHTML = 'Enviar';
+            }
+        });
         const loginForm = document.getElementById('loginForm');
         const loginBtn = document.getElementById('loginBtn');
         const alert = document.getElementById('alert');
@@ -227,6 +301,13 @@
 
             const username = document.getElementById('username').value;
             const password = document.getElementById('password').value;
+
+            if (!username || !password) {
+                alert.className = 'alert error';
+                alert.textContent = '✗ Por favor, introduce tu usuario y contraseña';
+                alert.style.display = 'block';
+                return;
+            }
 
             loginBtn.disabled = true;
             loginBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Iniciando sesión...';
@@ -247,7 +328,7 @@
                     alert.className = 'alert success';
                     alert.textContent = '✓ ' + data.message + ' Redirigiendo...';
                     alert.style.display = 'block';
-                    
+
                     setTimeout(() => {
                         window.location.href = '/admin';
                     }, 1000);
@@ -258,11 +339,12 @@
                 alert.className = 'alert error';
                 alert.textContent = '✗ ' + error.message;
                 alert.style.display = 'block';
-                
+
                 loginBtn.disabled = false;
                 loginBtn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Iniciar Sesión';
             }
         });
     </script>
 </body>
+
 </html>
