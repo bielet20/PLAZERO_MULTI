@@ -25,7 +25,11 @@ function check(name, condition, errorMsg, isWarning = false) {
             console.log(`⚠️  ${name}: ${errorMsg}`);
             warnings++;
         } else {
-            console.log(`❌ ${name}: ${errorMsg}`);
+            if (errorMsg.includes('EPERM')) {
+                console.log(`❌ ${name}: ${errorMsg} (Hint: Si el archivo existe, esto puede ser un problema de permisos de acceso total al disco en el terminal de macOS)`);
+            } else {
+                console.log(`❌ ${name}: ${errorMsg}`);
+            }
             errors++;
         }
     }
@@ -181,6 +185,7 @@ if (errors === 0 && warnings === 0) {
     process.exit(0);
 } else {
     console.log('\n❌ Errores críticos encontrados');
-    console.log('   Corrija los errores antes de desplegar en producción.\n');
+    console.log('   Corrija los errores antes de desplegar en producción.');
+    console.log('   Nota: Si recibe errores EPERM en macOS, asegúrese de que el terminal tiene permisos de Acceso total al disco.\n');
     process.exit(1);
 }

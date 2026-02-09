@@ -91,6 +91,12 @@ const {
     updateEmpresa,
     deleteEmpresa,
     transferirTicketEmpresa,
+    // Clientes
+    getAllClientes,
+    getClienteById,
+    createCliente,
+    updateCliente,
+    deleteCliente,
     // Citas
     createAppointment,
     getAppointmentsByTicket,
@@ -110,12 +116,6 @@ const {
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-
-console.log('🚀 Server Version: 1.0.1 - Fixed Ticket Transfer Logic');
-
-app.get('/api/version', (req, res) => {
-    res.json({ version: '1.0.1', message: 'Ticket Transfer Fix Active' });
-});
 
 // Security: Helmet middleware for security headers
 app.use(helmet({
@@ -201,8 +201,10 @@ app.use(session({
     name: 'sessionId', // Cambiar nombre por defecto para mayor seguridad
     cookie: {
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production', // Solo HTTPS en producción
-        sameSite: 'strict', // Protección CSRF adicional
+        // En producción real (con HTTPS), usar secure: true
+        // Para pruebas locales en producción, permitir session sin HTTPS
+        secure: process.env.NODE_ENV === 'production' && process.env.SECURE_COOKIES === 'true',
+        sameSite: 'lax',
         maxAge: 24 * 60 * 60 * 1000, // 24 hours
         path: '/'
     }
@@ -1231,11 +1233,37 @@ app.post('/api/tickets/:ticketId/invoices', requireAuth, requireAdmin, csrfProte
             });
         } else {
             // Create new invoice
+            let clienteInfo = {
+                telefono: null,
+                direccion: null,
+                cif: null
+            };
+
+            // Try to look up client details from existing database
+            try {
+                const allClients = await getAllClientes();
+                const matchedClient = allClients.find(c =>
+                    (ticket.email && c.email && c.email.trim().toLowerCase() === ticket.email.trim().toLowerCase()) ||
+                    (ticket.nombre && c.nombre && c.nombre.trim().toLowerCase() === ticket.nombre.trim().toLowerCase())
+                );
+
+                if (matchedClient) {
+                    clienteInfo.telefono = matchedClient.telefono;
+                    clienteInfo.direccion = matchedClient.direccion;
+                    clienteInfo.cif = matchedClient.cif;
+                }
+            } catch (err) {
+                console.error('Error looking up client details for invoice:', err);
+            }
+
             const invoiceData = {
                 ticket_id: ticketId,
                 empresa_id: ticket.empresa_id || null,
                 cliente_nombre: ticket.nombre,
                 cliente_email: ticket.email,
+                cliente_telefono: clienteInfo.telefono,
+                cliente_direccion: clienteInfo.direccion,
+                cliente_cif: clienteInfo.cif,
                 fecha_vencimiento,
                 subtotal,
                 iva,
@@ -1391,6 +1419,79 @@ app.delete('/api/facturas/:id', requireAuth, requireAdmin, csrfProtection, async
     } catch (error) {
         console.error('Error eliminando factura:', error);
         res.status(error.message.includes('bloqueada') ? 403 : 500).json({ error: error.message });
+    }
+});
+
+// ==================== API CLIENTES ====================
+
+// Get all clientes
+app.get('/api/clientes', requireAuth, csrfProtection, async (req, res) => {
+    try {
+        const clientes = await getAllClientes();
+        res.json(clientes);
+    } catch (error) {
+        console.error('Error obteniendo clientes:', error);
+        res.status(500).json({ error: 'Error obteniendo clientes' });
+    }
+});
+
+// Get cliente by ID
+app.get('/api/clientes/:id', requireAuth, csrfProtection, async (req, res) => {
+    try {
+        const cliente = await getClienteById(req.params.id);
+        if (cliente) {
+            res.json(cliente);
+        } else {
+            res.status(404).json({ error: 'Cliente no encontrado' });
+        }
+    } catch (error) {
+        console.error('Error obteniendo cliente:', error);
+        res.status(500).json({ error: 'Error obteniendo cliente' });
+    }
+});
+
+// Create cliente
+app.post('/api/clientes', requireAuth, requireAdmin, csrfProtection, async (req, res) => {
+    try {
+        const { nombre, email, telefono, direccion, cif, empresa_id } = req.body;
+        if (!nombre) {
+            return res.status(400).json({ error: 'El nombre es obligatorio' });
+        }
+        const result = await createCliente({ nombre, email, telefono, direccion, cif, empresa_id });
+        res.status(201).json({ id: result.id, message: 'Cliente creado correctamente' });
+    } catch (error) {
+        console.error('Error creando cliente:', error);
+        res.status(500).json({ error: 'Error creando cliente' });
+    }
+});
+
+// Update cliente
+app.put('/api/clientes/:id', requireAuth, requireAdmin, csrfProtection, async (req, res) => {
+    try {
+        const result = await updateCliente(req.params.id, req.body);
+        if (result.changes > 0) {
+            res.json({ success: true, message: 'Cliente actualizado correctamente' });
+        } else {
+            res.status(404).json({ error: 'Cliente no encontrado' });
+        }
+    } catch (error) {
+        console.error('Error actualizando cliente:', error);
+        res.status(500).json({ error: 'Error actualizando cliente' });
+    }
+});
+
+// Delete cliente
+app.delete('/api/clientes/:id', requireAuth, requireAdmin, csrfProtection, async (req, res) => {
+    try {
+        const result = await deleteCliente(req.params.id);
+        if (result.changes > 0) {
+            res.json({ success: true, message: 'Cliente eliminado correctamente' });
+        } else {
+            res.status(404).json({ error: 'Cliente no encontrado' });
+        }
+    } catch (error) {
+        console.error('Error eliminando cliente:', error);
+        res.status(500).json({ error: 'Error eliminando cliente' });
     }
 });
 

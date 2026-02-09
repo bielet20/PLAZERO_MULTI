@@ -4,7 +4,7 @@ const bcrypt = require('bcryptjs');
 // Usar base de datos persistente
 const db = new Database('database.sqlite');
 
-console.log('✅ Usando base de datos PERSISTENTE (database.sqlite)');
+console.log('✅ Usando base de datos PERSISTENTE (tickets.db)');
 
 // Initialize database
 const initDatabase = () => {
@@ -111,6 +111,21 @@ const initDatabase = () => {
                 )
             `);
 
+            // Create clientes table
+            db.exec(`
+                CREATE TABLE IF NOT EXISTS clientes (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    nombre TEXT NOT NULL,
+                    email TEXT,
+                    telefono TEXT,
+                    direccion TEXT,
+                    cif TEXT,
+                    empresa_id INTEGER,
+                    fecha_creacion DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (empresa_id) REFERENCES empresas(id)
+                )
+            `);
+
             // Create whatsapp_contactos table
             db.exec(`
                 CREATE TABLE IF NOT EXISTS whatsapp_contactos (
@@ -144,10 +159,22 @@ const initDatabase = () => {
                     fecha_presentacion DATETIME,
                     hash TEXT,
                     hash_anterior TEXT,
+                    cliente_telefono TEXT,
+                    cliente_direccion TEXT,
+                    cliente_cif TEXT,
                     FOREIGN KEY (ticket_id) REFERENCES tickets(ticket_id),
                     FOREIGN KEY (empresa_id) REFERENCES empresas(id)
                 )
             `);
+
+            // Migrate facturas table if columns missing
+            const facturasInfo = db.prepare('PRAGMA table_info(facturas)').all();
+            const hasTelefono = facturasInfo.some(c => c.name === 'cliente_telefono');
+            if (!hasTelefono) {
+                db.exec('ALTER TABLE facturas ADD COLUMN cliente_telefono TEXT');
+                db.exec('ALTER TABLE facturas ADD COLUMN cliente_direccion TEXT');
+                db.exec('ALTER TABLE facturas ADD COLUMN cliente_cif TEXT');
+            }
 
             // Create factura_items table
             db.exec(`
@@ -432,16 +459,20 @@ const getTicketById = (ticketId) => {
 };
 
 const updateTicketStatus = (ticketId, estado) => {
+    if (!ticketId) return { changes: 0 };
+    const trimmedId = ticketId.toString().trim();
     const stmt = db.prepare(`
         UPDATE tickets 
         SET estado = ?, fecha_actualizacion = CURRENT_TIMESTAMP 
         WHERE ticket_id = ?
     `);
-    const result = stmt.run(estado, ticketId);
+    const result = stmt.run(estado, trimmedId);
     return { changes: result.changes };
 };
 
 const updateTicket = (ticketId, updates) => {
+    if (!ticketId) return { changes: 0 };
+    const trimmedId = ticketId.toString().trim();
     const fields = [];
     const values = [];
 
@@ -453,7 +484,7 @@ const updateTicket = (ticketId, updates) => {
     });
 
     fields.push('fecha_actualizacion = CURRENT_TIMESTAMP');
-    values.push(ticketId);
+    values.push(trimmedId);
 
     const stmt = db.prepare(`UPDATE tickets SET ${fields.join(', ')} WHERE ticket_id = ?`);
     const result = stmt.run(...values);
@@ -461,32 +492,38 @@ const updateTicket = (ticketId, updates) => {
 };
 
 const archiveTicket = (ticketId, username) => {
+    if (!ticketId) return { changes: 0 };
+    const trimmedId = ticketId.toString().trim();
     const stmt = db.prepare(`
         UPDATE tickets 
         SET archivado = 1, fecha_archivado = CURRENT_TIMESTAMP, usuario_archivado = ?
         WHERE ticket_id = ?
     `);
-    const result = stmt.run(username, ticketId);
+    const result = stmt.run(username, trimmedId);
     return { changes: result.changes };
 };
 
 const restoreTicket = (ticketId) => {
+    if (!ticketId) return { changes: 0 };
+    const trimmedId = ticketId.toString().trim();
     const stmt = db.prepare(`
         UPDATE tickets 
         SET archivado = 0, fecha_archivado = NULL, usuario_archivado = NULL
         WHERE ticket_id = ?
     `);
-    const result = stmt.run(ticketId);
+    const result = stmt.run(trimmedId);
     return { changes: result.changes };
 };
 
 const deleteTicket = (ticketId) => {
+    if (!ticketId) return { changes: 0 };
+    const trimmedId = ticketId.toString().trim();
     const deleteTx = db.transaction((id) => {
         db.prepare('DELETE FROM notas WHERE ticket_id = ?').run(id);
         db.prepare('DELETE FROM whatsapp_contactos WHERE ticket_id = ?').run(id);
         return db.prepare('DELETE FROM tickets WHERE ticket_id = ?').run(id);
     });
-    const result = deleteTx(ticketId);
+    const result = deleteTx(trimmedId);
     return { changes: result.changes };
 };
 
@@ -496,8 +533,10 @@ const getTicketsByStatus = (estado) => {
 };
 
 const assignTechnician = (ticketId, tecnico) => {
+    if (!ticketId) return { changes: 0 };
+    const trimmedId = ticketId.toString().trim();
     const stmt = db.prepare('UPDATE tickets SET tecnico_asignado = ?, fecha_actualizacion = CURRENT_TIMESTAMP WHERE ticket_id = ?');
-    const result = stmt.run(tecnico, ticketId);
+    const result = stmt.run(tecnico, trimmedId);
     return { changes: result.changes };
 };
 
@@ -540,11 +579,13 @@ const deleteService = (id) => {
 };
 
 const addNoteToTicket = (ticketId, nota, autor) => {
+    if (!ticketId) return { id: null };
+    const trimmedId = ticketId.toString().trim();
     const stmt = db.prepare(`
         INSERT INTO notas (ticket_id, nota, autor)
         VALUES (?, ?, ?)
     `);
-    const result = stmt.run(ticketId, nota, autor);
+    const result = stmt.run(trimmedId, nota, autor);
     return { id: result.lastInsertRowid };
 };
 
@@ -575,23 +616,75 @@ const deleteNote = (noteId) => {
 };
 
 const getTicketNotes = (ticketId) => {
+    if (!ticketId) return [];
+    const trimmedId = ticketId.toString().trim();
     const stmt = db.prepare('SELECT * FROM notas WHERE ticket_id = ? AND archivado = 0 ORDER BY fecha_creacion DESC');
-    return stmt.all(ticketId);
+    return stmt.all(trimmedId);
 };
 
 // WhatsApp functions
 const registerWhatsAppContact = (ticketId, telefono, mensaje, enviado_por) => {
+    if (!ticketId) return { id: null };
+    const trimmedId = ticketId.toString().trim();
     const stmt = db.prepare(`
         INSERT INTO whatsapp_contactos (ticket_id, telefono, mensaje, enviado_por)
         VALUES (?, ?, ?, ?)
     `);
-    const result = stmt.run(ticketId, telefono, mensaje, enviado_por);
+    const result = stmt.run(trimmedId, telefono, mensaje, enviado_por);
     return { id: result.lastInsertRowid };
 };
 
 const getWhatsAppContacts = (ticketId) => {
+    if (!ticketId) return [];
+    const trimmedId = ticketId.toString().trim();
     const stmt = db.prepare('SELECT * FROM whatsapp_contactos WHERE ticket_id = ? ORDER BY fecha_contacto DESC');
-    return stmt.all(ticketId);
+    return stmt.all(trimmedId);
+};
+
+// Clientes functions
+const getAllClientes = () => {
+    const stmt = db.prepare('SELECT * FROM clientes ORDER BY nombre');
+    return stmt.all();
+};
+
+const getClienteById = (id) => {
+    const stmt = db.prepare('SELECT * FROM clientes WHERE id = ?');
+    return stmt.get(id);
+};
+
+const createCliente = (clienteData) => {
+    const { nombre, email, telefono, direccion, cif, empresa_id } = clienteData;
+    const stmt = db.prepare(`
+        INSERT INTO clientes (nombre, email, telefono, direccion, cif, empresa_id)
+        VALUES (?, ?, ?, ?, ?, ?)
+    `);
+    const result = stmt.run(nombre, email || '', telefono || '', direccion || '', cif || '', empresa_id || null);
+    return { id: result.lastInsertRowid };
+};
+
+const updateCliente = (id, updates) => {
+    const fields = [];
+    const values = [];
+
+    Object.keys(updates).forEach(key => {
+        if (updates[key] !== undefined) {
+            fields.push(`${key} = ?`);
+            values.push(updates[key]);
+        }
+    });
+
+    if (fields.length === 0) return { changes: 0 };
+
+    values.push(id);
+    const stmt = db.prepare(`UPDATE clientes SET ${fields.join(', ')} WHERE id = ?`);
+    const result = stmt.run(...values);
+    return { changes: result.changes };
+};
+
+const deleteCliente = (id) => {
+    const stmt = db.prepare('DELETE FROM clientes WHERE id = ?');
+    const result = stmt.run(id);
+    return { changes: result.changes };
 };
 
 // Empresas functions
@@ -672,15 +765,19 @@ const deleteMaterial = (id) => {
 };
 
 const addMaterialToTicket = (ticketId, materialId, cantidad, precioUnitario, registradoPor) => {
+    if (!ticketId) return { id: null };
+    const trimmedId = ticketId.toString().trim();
     const stmt = db.prepare(`
         INSERT INTO ticket_materiales (ticket_id, material_id, cantidad, precio_unitario, registrado_por)
         VALUES (?, ?, ?, ?, ?)
     `);
-    const result = stmt.run(ticketId, materialId, cantidad, precioUnitario, registradoPor);
+    const result = stmt.run(trimmedId, materialId, cantidad, precioUnitario, registradoPor);
     return { id: result.lastInsertRowid };
 };
 
 const getMaterialsForTicket = (ticketId) => {
+    if (!ticketId) return [];
+    const trimmedId = ticketId.toString().trim();
     const stmt = db.prepare(`
         SELECT tm.*, m.nombre 
         FROM ticket_materiales tm
@@ -688,7 +785,7 @@ const getMaterialsForTicket = (ticketId) => {
         WHERE tm.ticket_id = ?
         ORDER BY tm.fecha_registro DESC
     `);
-    return stmt.all(ticketId);
+    return stmt.all(trimmedId);
 };
 
 const removeMaterialFromTicket = (id) => {
@@ -723,13 +820,15 @@ const getInvoiceById = (id) => {
 };
 
 const getInvoicesByTicketId = (ticketId) => {
+    if (!ticketId) return [];
+    const trimmedId = ticketId.toString().trim();
     const stmt = db.prepare('SELECT * FROM facturas WHERE ticket_id = ?');
-    return stmt.all(ticketId);
+    return stmt.all(trimmedId);
 };
 
 const createInvoice = (invoiceData) => {
     const crypto = require('crypto');
-    let { ticket_id, empresa_id, cliente_nombre, cliente_email, fecha_vencimiento, subtotal, iva, total, items } = invoiceData;
+    let { ticket_id, empresa_id, cliente_nombre, cliente_email, cliente_telefono, cliente_direccion, cliente_cif, fecha_vencimiento, subtotal, iva, total, items } = invoiceData;
 
     const invoiceId = generateInvoiceId();
 
@@ -764,12 +863,13 @@ const createInvoice = (invoiceData) => {
             hAnterior = hashAnterior;
         }
 
+        const ticket_id_trimmed = ticket_id.toString().trim();
         const invoiceStmt = db.prepare(`
-            INSERT INTO facturas (factura_id, ticket_id, empresa_id, cliente_nombre, cliente_email, fecha_vencimiento, subtotal, iva, total, hash, hash_anterior)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO facturas (factura_id, ticket_id, empresa_id, cliente_nombre, cliente_email, cliente_telefono, cliente_direccion, cliente_cif, fecha_vencimiento, subtotal, iva, total, hash, hash_anterior)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `);
 
-        invoiceStmt.run(invoiceId, ticket_id, empresa_id || null, cliente_nombre, cliente_email, fecha_vencimiento, subtotal, iva, total, hash, hAnterior);
+        invoiceStmt.run(invoiceId, ticket_id_trimmed, empresa_id || null, cliente_nombre, cliente_email, cliente_telefono || null, cliente_direccion || null, cliente_cif || null, fecha_vencimiento, subtotal, iva, total, hash, hAnterior);
 
         const itemStmt = db.prepare(`
             INSERT INTO factura_items (factura_id, concepto, descripcion, cantidad, precio_unitario, total)
@@ -794,7 +894,7 @@ const updateInvoice = (id, updates) => {
     if (!current) throw new Error('Factura no encontrada');
     if (current.bloqueada === 1) throw new Error('La factura está bloqueada y no se puede modificar');
 
-    const { cliente_nombre, cliente_email, fecha_vencimiento, items, estado } = updates;
+    const { cliente_nombre, cliente_email, cliente_telefono, cliente_direccion, cliente_cif, fecha_vencimiento, items, estado } = updates;
 
     const updateTx = db.transaction(() => {
         // Update fields if provided
@@ -803,6 +903,9 @@ const updateInvoice = (id, updates) => {
 
         if (cliente_nombre !== undefined) { fields.push('cliente_nombre = ?'); values.push(cliente_nombre); }
         if (cliente_email !== undefined) { fields.push('cliente_email = ?'); values.push(cliente_email); }
+        if (cliente_telefono !== undefined) { fields.push('cliente_telefono = ?'); values.push(cliente_telefono); }
+        if (cliente_direccion !== undefined) { fields.push('cliente_direccion = ?'); values.push(cliente_direccion); }
+        if (cliente_cif !== undefined) { fields.push('cliente_cif = ?'); values.push(cliente_cif); }
         if (fecha_vencimiento !== undefined) { fields.push('fecha_vencimiento = ?'); values.push(fecha_vencimiento); }
         if (estado !== undefined) { fields.push('estado = ?'); values.push(estado); }
 
@@ -883,32 +986,40 @@ const deleteInvoice = (id) => {
 
 // Horas de trabajo functions
 const addHorasTrabajo = (ticketId, tecnico, horas, descripcion, tecnico_id) => {
+    if (!ticketId) return { id: null };
+    const trimmedId = ticketId.toString().trim();
     const stmt = db.prepare(`
         INSERT INTO horas_trabajo (ticket_id, tecnico, horas, descripcion, tecnico_id)
         VALUES (?, ?, ?, ?, ?)
     `);
-    const result = stmt.run(ticketId, tecnico, horas, descripcion, tecnico_id || null);
+    const result = stmt.run(trimmedId, tecnico, horas, descripcion, tecnico_id || null);
     return { id: result.lastInsertRowid };
 };
 
 const getHorasTrabajo = (ticketId) => {
+    if (!ticketId) return [];
+    const trimmedId = ticketId.toString().trim();
     const stmt = db.prepare('SELECT id, ticket_id, tecnico as tecnico_nombre, horas, descripcion, fecha as fecha_registro FROM horas_trabajo WHERE ticket_id = ? ORDER BY fecha DESC');
-    return stmt.all(ticketId);
+    return stmt.all(trimmedId);
 };
 
 const getHorasResumenPorTicket = (ticketId) => {
+    if (!ticketId) return [];
+    const trimmedId = ticketId.toString().trim();
     const stmt = db.prepare(`
         SELECT tecnico as tecnico_nombre, SUM(horas) as total_horas, COUNT(*) as registros
         FROM horas_trabajo
         WHERE ticket_id = ?
         GROUP BY tecnico
     `);
-    return stmt.all(ticketId);
+    return stmt.all(trimmedId);
 };
 
 const getTotalHorasTicket = (ticketId) => {
+    if (!ticketId) return 0;
+    const trimmedId = ticketId.toString().trim();
     const stmt = db.prepare('SELECT SUM(horas) as total FROM horas_trabajo WHERE ticket_id = ?');
-    const result = stmt.get(ticketId);
+    const result = stmt.get(trimmedId);
     return result?.total || 0;
 };
 
@@ -953,6 +1064,8 @@ const createAppointment = (data) => {
 };
 
 const getAppointmentsByTicket = (ticketId) => {
+    if (!ticketId) return [];
+    const trimmedId = ticketId.toString().trim();
     const stmt = db.prepare(`
         SELECT c.*, u.nombre_completo as tecnico_nombre 
         FROM citas c
@@ -960,7 +1073,7 @@ const getAppointmentsByTicket = (ticketId) => {
         WHERE c.ticket_id = ? 
         ORDER BY c.fecha_cita
     `);
-    return stmt.all(ticketId);
+    return stmt.all(trimmedId);
 };
 
 const getAppointmentsByTechnician = (tecnicoId) => {
@@ -998,8 +1111,10 @@ const deleteAppointment = (id) => {
 };
 
 const transferirTicketEmpresa = (ticketId, empresaId) => {
+    if (!ticketId) return { changes: 0 };
+    const trimmedId = ticketId.toString().trim();
     const stmt = db.prepare('UPDATE tickets SET empresa_id = ?, fecha_actualizacion = CURRENT_TIMESTAMP WHERE ticket_id = ?');
-    const result = stmt.run(empresaId, ticketId);
+    const result = stmt.run(empresaId, trimmedId);
     return { changes: result.changes };
 };
 
@@ -1328,6 +1443,12 @@ module.exports = {
     updateEmpresa,
     deleteEmpresa,
     transferirTicketEmpresa,
+    // Clientes
+    getAllClientes,
+    getClienteById,
+    createCliente,
+    updateCliente,
+    deleteCliente,
     // Materiales
     getAllMaterials,
     getMaterialById,

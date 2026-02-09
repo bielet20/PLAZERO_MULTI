@@ -13,7 +13,7 @@
 
     /* Position invoice modal for printing */
     #invoiceModal {
-        position: fixed !important;
+        position: absolute !important;
         left: 0 !important;
         top: 0 !important;
         width: 100% !important;
@@ -21,6 +21,7 @@
         margin: 0 !important;
         padding: 0 !important;
         background: white !important;
+        display: block !important;
         overflow: visible !important;
     }
 
@@ -50,36 +51,49 @@
     /* Prevent page breaks inside important elements */
     .verifactu-container-centered,
     .invoice-totals,
-    table {
+    .detail-row,
+    table,
+    tr {
         page-break-inside: avoid !important;
     }
 
     /* Veri*Factu Print Styles */
     .verifactu-container-centered {
-        border: 2px solid #000 !important;
-        background: white !important;
-        max-width: 100% !important;
-        padding: 1rem !important;
+        border: 1.5pt solid #000 !important;
+        background: #fff !important;
+        max-width: 90% !important;
+        margin: 10mm auto !important;
+        padding: 5mm !important;
+        box-shadow: none !important;
     }
 
     .verifactu-qr {
-        width: 100px !important;
-        height: 100px !important;
+        width: 35mm !important;
+        height: 35mm !important;
         display: block !important;
-        margin: 0 auto !important;
-        border: 2px solid #000 !important;
+        margin: 0 auto 5mm auto !important;
+        border: 1pt solid #000 !important;
+        padding: 2mm !important;
     }
 
     .verifactu-hash {
-        border: 1px solid #000 !important;
-        font-size: 0.75rem !important;
+        border: 1pt solid #000 !important;
+        background: #fff !important;
+        font-size: 9pt !important;
+        padding: 3mm !important;
         page-break-inside: avoid !important;
+        display: block !important;
+        width: 100% !important;
+        max-width: none !important;
+        margin: 0 auto !important;
     }
 
     .verifactu-badge {
-        border: 2px solid #000 !important;
-        background: white !important;
+        border: 1.5pt solid #000 !important;
+        background: #fff !important;
         color: #000 !important;
+        padding: 2mm 5mm !important;
+        margin-bottom: 5mm !important;
     }
 
     .invoice-totals {
@@ -1498,5 +1512,142 @@ tr:hover {
     /* Servicio */
     .tickets-table td:nth-child(4) {
         display: none;
+    }
+}
+
+/* Invoice Format & Layout Optimization */
+.invoice-compact {
+    font-size: 8.5pt !important;
+}
+
+.invoice-compact .detail-row {
+    padding: 0.2rem 0 !important;
+}
+
+.invoice-compact .header-grid {
+    gap: 0.5rem !important;
+    padding: 0.75rem !important;
+    margin-bottom: 1rem !important;
+}
+
+.invoice-compact table {
+    margin-top: 1rem !important;
+}
+
+.invoice-compact table th,
+.invoice-compact table td {
+    padding: 3px 6px !important;
+}
+
+.invoice-compact .verifactu-container-centered {
+    padding: 1rem !important;
+    margin-top: 1rem !important;
+    max-width: 320px !important;
+    gap: 1rem !important;
+    /* Scale down for print */
+    transform: scale(0.9);
+    transform-origin: center;
+}
+
+.invoice-compact .verifactu-qr {
+    width: 25mm !important;
+    height: 25mm !important;
+    margin-bottom: 2mm !important;
+}
+
+.invoice-compact .verifactu-hash {
+    padding: 0.5rem !important;
+    font-size: 8pt !important;
+}
+
+.invoice-compact .invoice-totals {
+    padding: 0.75rem !important;
+    min-width: 250px !important;
+    margin-top: 1rem !important;
+}
+
+.invoice-compact .total-amount {
+    font-size: 1.2rem !important;
+    margin-top: 0.5rem !important;
+    padding-top: 0.5rem !important;
+}
+
+/* Print specific distribution improvements */
+@media print {
+    .invoice-compact .modal-content {
+        padding: 5mm !important;
+    }
+
+    .invoice-compact .verifactu-container-centered {
+        margin-top: 5mm !important;
+    }
+}
+/* Print Optimization for Clients (User Request) */
+@media print {
+    /* Hide decorative header elements */
+    .invoice-premium-header {
+        border-bottom: 1px solid #000 !important;
+        margin-bottom: 2rem !important;
+        padding-bottom: 1rem !important;
+    }
+    
+    /* Hide Logo Icon container */
+    .invoice-premium-header > div:first-child > div:first-child {
+        display: none !important;
+    }
+
+    /* Simplify Colors for Print */
+    .invoice-premium-header h1, 
+    .invoice-premium-header h2,
+    .invoice-premium-header p,
+    .invoice-addresses-grid h4,
+    .invoice-meta-strip span {
+        color: #000 !important;
+    }
+
+    .invoice-addresses-grid h4 {
+        border-bottom: 1px solid #ccc !important;
+    }
+
+    .invoice-meta-strip {
+        background: none !important;
+        border: 1px solid #ccc !important;
+    }
+
+    /* Smaller VeriFactu and Totals as requested */
+    .invoice-summary-section {
+        margin-top: 1rem !important;
+        padding-top: 1rem !important;
+        page-break-inside: avoid;
+    }
+
+    .verifactu-container-centered {
+        transform: scale(0.65) !important;
+        transform-origin: left bottom !important;
+        margin: 0 !important;
+    }
+
+    .invoice-totals-box {
+        transform: scale(0.75) !important;
+        transform-origin: right bottom !important;
+        box-shadow: none !important;
+        background: #fff !important;
+        color: #000 !important;
+        border: 1px solid #000 !important;
+        padding: 1rem !important;
+    }
+    
+    .invoice-totals-box > div {
+        border-color: #000 !important;
+    }
+
+    /* Ensure address grid uses full width properly */
+    .invoice-addresses-grid {
+        gap: 4rem !important;
+    }
+    
+    /* Hide print button */
+    .no-print {
+        display: none !important;
     }
 }

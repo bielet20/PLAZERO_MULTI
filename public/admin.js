@@ -130,39 +130,64 @@ async function viewInvoice(invoiceId) {
                 `).join('');
 
         const detailsHtml = `
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; margin-bottom: 2rem; padding: 1.5rem; background: #f9fafb; border-radius: 8px;">
-                        <div>
-                            <h3 style="margin: 0 0 1rem 0; color: #2563eb;">Emisor</h3>
-                            <div style="line-height: 1.6;">
-                                <strong>FONT MULTISERVEIS Y PLAZERO</strong><br>
+                    <div class="invoice-premium-header" style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 2rem; border-bottom: 2px solid #2563eb; padding-bottom: 1.5rem;">
+                        <div style="display: flex; align-items: center; gap: 1rem;">
+                            <div style="background: #2563eb; color: white; width: 48px; height: 48px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 1.5rem;">
+                                <i class="fas fa-wrench"></i>
+                            </div>
+                            <div>
+                                <h2 style="margin: 0; font-size: 1.5rem; color: #1e40af; letter-spacing: -0.02em;">FONT MULTISERVEIS</h2>
+                                <p style="margin: 0; font-size: 0.9rem; color: #64748b; font-weight: 600;">Y PLAZERO SOLUTIONS</p>
+                            </div>
+                        </div>
+                        <div style="text-align: right;">
+                            <h1 style="margin: 0; font-size: 2.2rem; color: #e5e7eb; font-weight: 900; line-height: 1; letter-spacing: 0.1em;">FACTURA</h1>
+                            <div style="margin-top: 0.5rem; font-family: monospace; font-size: 1.1rem; color: #1e40af; font-weight: bold;">
+                                ${invoice.factura_id}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="invoice-addresses-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 3rem; margin-bottom: 2rem;">
+                        <div class="address-box">
+                            <h4 style="text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.1em; color: #2563eb; margin: 0 0 0.75rem 0; border-bottom: 1px solid #e5e7eb; padding-bottom: 0.4rem;">Información del Emisor</h4>
+                            <div style="font-size: 0.9rem; line-height: 1.6; color: #334155;">
+                                <strong style="color: #1e293b; font-size: 1rem;">FONT MULTISERVEIS Y PLAZERO</strong><br>
                                 CIF: ${invoice.emisor_cif || 'B12345678'}<br>
-                                Dirección: C/ Ejemplo, 123<br>
-                                08001 Barcelona<br>
-                                Tel: 600 123 456<br>
-                                Email: info@fontplazero.com
+                                C/ Ejemplo, 123, 08001 Barcelona<br>
+                                <i class="fas fa-phone" style="font-size: 0.8rem; opacity: 0.7;"></i> 600 123 456<br>
+                                <i class="fas fa-envelope" style="font-size: 0.8rem; opacity: 0.7;"></i> info@fontplazero.com
+                            </div>
+                        </div>
+                        <div class="address-box">
+                            <h4 style="text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.1em; color: #2563eb; margin: 0 0 0.75rem 0; border-bottom: 1px solid #e5e7eb; padding-bottom: 0.4rem;">Información del Cliente</h4>
+                            <div style="font-size: 0.9rem; line-height: 1.6; color: #334155;">
+                                <strong style="color: #1e293b; font-size: 1rem;">${invoice.cliente_nombre}</strong><br>
+                                ${invoice.cliente_cif ? `CIF/NIF: ${invoice.cliente_cif}<br>` : ''}
+                                ${invoice.cliente_direccion ? `${invoice.cliente_direccion}<br>` : ''}
+                                ${invoice.cliente_telefono ? `<i class="fas fa-phone" style="font-size: 0.8rem; opacity: 0.7;"></i> ${invoice.cliente_telefono}<br>` : ''}
+                                <i class="fas fa-envelope" style="font-size: 0.8rem; opacity: 0.7;"></i> ${invoice.cliente_email}<br>
+                                ${invoice.empresa_nombre ? `Empresa: ${invoice.empresa_nombre}<br>` : ''}
+                                ${(invoice.empresa_cif && invoice.empresa_cif !== invoice.cliente_cif) ? `CIF Empresa: ${invoice.empresa_cif}<br>` : ''}
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="invoice-meta-strip" style="display: flex; justify-content: space-between; background: #f8fafc; padding: 1rem 1.5rem; border-radius: 8px; margin-bottom: 2rem; border: 1px solid #e2e8f0;">
+                        <div style="display: flex; gap: 3rem;">
+                            <div>
+                                <span style="font-size: 0.7rem; text-transform: uppercase; color: #64748b; font-weight: 700;">Fecha Emisión</span>
+                                <div style="font-weight: 600; color: #1e293b;">${new Date(invoice.fecha_emision).toLocaleDateString('es-ES')}</div>
+                            </div>
+                            <div>
+                                <span style="font-size: 0.7rem; text-transform: uppercase; color: #64748b; font-weight: 700;">Vencimiento</span>
+                                <div style="font-weight: 600; color: #1e293b;">${new Date(new Date(invoice.fecha_emision).getTime() + 15 * 24 * 60 * 60 * 1000).toLocaleDateString('es-ES')}</div>
                             </div>
                         </div>
                         <div>
-                            <h3 style="margin: 0 0 1rem 0; color: #2563eb;">Cliente</h3>
-                            <div style="line-height: 1.6;">
-                                <strong>${invoice.cliente_nombre}</strong><br>
-                                Email: ${invoice.cliente_email}<br>
-                                ${invoice.empresa_nombre ? `Empresa: ${invoice.empresa_nombre}<br>` : ''}
-                                ${invoice.empresa_cif ? `CIF: ${invoice.empresa_cif}<br>` : ''}
-                            </div>
+                            <span style="font-size: 0.7rem; text-transform: uppercase; color: #64748b; font-weight: 700;">Estado</span>
+                            <div><span class="badge badge-${invoice.estado}" style="text-transform: uppercase; padding: 4px 12px; font-weight: 800; font-size: 0.7rem;">${invoice.estado}</span></div>
                         </div>
-                    </div>
-                    <div class="detail-row">
-                        <div class="detail-label">Factura ID</div>
-                        <div><strong>${invoice.factura_id}</strong></div>
-                    </div>
-                    <div class="detail-row">
-                        <div class="detail-label">Fecha de Emisión</div>
-                        <div>${new Date(invoice.fecha_emision).toLocaleDateString('es-ES')}</div>
-                    </div>
-                    <div class="detail-row">
-                        <div class="detail-label">Estado</div>
-                        <div><span class="badge badge-${invoice.estado}">${invoice.estado}</span></div>
                     </div>
                     <div style="margin-top: 2rem;">
                         <h4 style="margin-bottom: 1rem;">Conceptos</h4>
@@ -182,25 +207,37 @@ async function viewInvoice(invoiceId) {
                         </table>
                     </div>
                     <div style="margin-top: 2rem; display: flex; flex-direction: column; align-items: center; gap: 2rem;">
-                        <div class="verifactu-container-centered" style="${invoice.hash ? '' : 'display: none;'}">
-                <div class="verifactu-badge">
-                    <i class="fas fa-check-circle"></i> VERI*FACTU
-                            </div>
-                            <div class="verifactu-content">
-                                <img src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(`https://www2.agenciatributaria.gob.es/wlpl/TIKE-CONT/v1/qr/v1/verificar?id=${invoice.factura_id}&nif=${invoice.emisor_cif}&fecha=${invoice.fecha_emision.substring(0, 10)}&total=${invoice.total}&hash=${invoice.hash.substring(0, 8).toUpperCase()}`)}" alt="QR Veri*Factu" class="verifactu-qr">
-                                <div class="verifactu-hash">
-                                    <strong>Huella Digital:</strong><br>${invoice.hash.substring(0, 8).toUpperCase()}
-                                </div>
-                            </div>
-                            <div class="verifactu-footer">
-                                Factura verificable en la sede electrónica de la AEAT
-                            </div>
+                    <div class="invoice-summary-section" style="display: flex; justify-content: space-between; align-items: flex-end; margin-top: 3rem; border-top: 2px solid #f1f5f9; padding-top: 2rem;">
+                <div class="verifactu-container-centered" style="${invoice.hash ? 'margin: 0; text-align: left;' : 'display: none;'}">
+                    <div class="verifactu-badge">
+                        <i class="fas fa-check-circle"></i> VERI*FACTU
+                    </div>
+                    <div class="verifactu-content" style="flex-direction: row; align-items: center; gap: 1.5rem;">
+                        <img src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(`https://www2.agenciatributaria.gob.es/wlpl/TIKE-CONT/v1/qr/v1/verificar?id=${invoice.factura_id}&nif=${invoice.emisor_cif}&fecha=${invoice.fecha_emision.substring(0, 10)}&total=${invoice.total}&hash=${invoice.hash.substring(0, 8).toUpperCase()}`)}" alt="QR Veri*Factu" class="verifactu-qr" style="width: 80px; height: 80px; margin: 0;">
+                        <div class="verifactu-hash" style="border: none; background: transparent; padding: 0;">
+                            <strong style="font-size: 0.7rem; color: #64748b; text-transform: uppercase;">Huella Digital</strong><br>
+                            <span style="font-family: monospace; font-size: 1.2rem; font-weight: bold; color: #1e293b;">${invoice.hash.substring(0, 8).toUpperCase()}</span>
                         </div>
-                        
-            <div class="invoice-totals">
-                <div><strong>Subtotal:</strong> ${invoice.subtotal.toFixed(2)} €</div>
-                <div><strong>IVA (21%):</strong> ${invoice.iva.toFixed(2)} €</div>
-                <div class="total-amount">Total: ${invoice.total.toFixed(2)} €</div>
+                    </div>
+                    <div class="verifactu-footer" style="text-align: left;">
+                        Verificación rápida mediante código QR o huella AEAT
+                    </div>
+                </div>
+                
+                <div class="invoice-totals-box" style="min-width: 300px; background: #1e40af; color: white; padding: 1.5rem; border-radius: 12px; box-shadow: 0 10px 15px -3px rgba(30, 64, 175, 0.2);">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem; font-size: 0.95rem; opacity: 0.9;">
+                        <span>Subtotal Base</span>
+                        <span>${invoice.subtotal.toFixed(2)} €</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 1rem; font-size: 0.95rem; opacity: 0.9;">
+                        <span>IVA Aplicado (21%)</span>
+                        <span>${invoice.iva.toFixed(2)} €</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid rgba(255,255,255,0.2); padding-top: 1rem;">
+                        <span style="font-weight: 600; font-size: 1.1rem;">TOTAL FACTURA</span>
+                        <span style="font-size: 1.8rem; font-weight: 900;">${invoice.total.toFixed(2)} €</span>
+                    </div>
+                </div>
             </div>
                     </div>
             <div style="margin-top: 2rem; display: flex; gap: 1rem; justify-content: flex-end; border-top: 1px solid #e5e7eb; padding-top: 1.5rem;" class="no-print">
@@ -211,6 +248,15 @@ async function viewInvoice(invoiceId) {
         `;
 
         document.getElementById('invoiceDetails').innerHTML = detailsHtml;
+
+        // Apply saved format preference
+        const savedFormat = sessionStorage.getItem('invoice_format_preference') || 'standard';
+        const formatSelector = document.getElementById('invoiceFormatSelector');
+        if (formatSelector) {
+            formatSelector.value = savedFormat;
+            updateInvoiceFormat(savedFormat);
+        }
+
         document.getElementById('invoiceModal').classList.add('active');
 
     } catch (error) {
@@ -225,6 +271,24 @@ function closeInvoiceModal() {
 
 function printInvoice() {
     window.print();
+}
+
+/**
+ * Updates the invoice layout format (standard or compact)
+ * @param {string} format - 'standard' or 'compact'
+ */
+function updateInvoiceFormat(format) {
+    const detailsContainer = document.getElementById('invoiceDetails');
+    if (!detailsContainer) return;
+
+    if (format === 'compact') {
+        detailsContainer.classList.add('invoice-compact');
+    } else {
+        detailsContainer.classList.remove('invoice-compact');
+    }
+
+    // Persist preference in session
+    sessionStorage.setItem('invoice_format_preference', format);
 }
 // ==================== MODERN NOTIFICATION SYSTEM ====================
 
@@ -2838,6 +2902,7 @@ function toggleCalendarPanel() {
         document.getElementById('servicesPanel').style.display = 'none';
         document.getElementById('materialsPanel').style.display = 'none';
         document.getElementById('empresasPanel').style.display = 'none';
+        document.getElementById('clientesPanel').style.display = 'none';
 
         panel.style.display = 'block';
         loadAppointments();
@@ -3196,7 +3261,7 @@ function toggleFacturasPanel() {
     const isVisible = panel.style.display !== 'none';
 
     // Hide all other panels
-    document.querySelectorAll('.users-panel, .services-panel, .materials-panel, .calendar-panel').forEach(p => {
+    document.querySelectorAll('.users-panel, .services-panel, .materials-panel, .calendar-panel, #clientesPanel').forEach(p => {
         if (p.id !== 'facturasPanel') p.style.display = 'none';
     });
 
@@ -3529,5 +3594,177 @@ async function saveInvoiceEdit() {
     } catch (error) {
         console.error('Error saving invoice edit:', error);
         showNotification('Error al guardar los cambios de la factura', 'error');
+    }
+}
+
+// ==================== CLIENTES MANAGEMENT ====================
+
+function toggleClientesPanel() {
+    const panel = document.getElementById('clientesPanel');
+    const isVisible = panel.style.display !== 'none';
+
+    // Hide all other panels
+    document.querySelectorAll('.users-panel, .services-panel, .materials-panel, .calendar-panel, #facturasPanel').forEach(p => {
+        if (p.id !== 'clientesPanel') p.style.display = 'none';
+    });
+
+    if (isVisible) {
+        panel.style.display = 'none';
+    } else {
+        panel.style.display = 'block';
+        loadClientes();
+    }
+}
+
+async function loadClientes() {
+    try {
+        const response = await fetch('/api/clientes', {
+            headers: { 'csrf-token': csrfToken }
+        });
+        const clientes = await response.json();
+        const tbody = document.getElementById('clientesTableBody');
+        tbody.innerHTML = '';
+
+        if (clientes.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 2rem;">No hay clientes registrados</td></tr>';
+            return;
+        }
+
+        clientes.forEach(c => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>${c.nombre}</td>
+                <td>${c.email || '-'}</td>
+                <td>${c.telefono || '-'}</td>
+                <td>${c.cif || '-'}</td>
+                <td>${c.empresa_id || 'Particular'}</td>
+                <td>
+                    <div style="display: flex; gap: 0.5rem;">
+                        <button class="btn-icon btn-edit" onclick="editCliente(${c.id})" title="Editar">
+                            <i class="fas fa-edit"></i>
+                        </button>
+                        <button class="btn-icon btn-delete" onclick="deleteCliente(${c.id})" title="Eliminar">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
+                </td>
+            `;
+            tbody.appendChild(tr);
+        });
+    } catch (error) {
+        console.error('Error loading clients:', error);
+        showNotification('Error al cargar clientes', 'error');
+    }
+}
+
+async function loadEmpresasForClientes() {
+    try {
+        const response = await fetch('/api/empresas', {
+            headers: { 'csrf-token': csrfToken }
+        });
+        const empresas = await response.json();
+        const select = document.getElementById('clienteEmpresaId');
+        if (!select) return;
+
+        select.innerHTML = '<option value="">Ninguna</option>';
+        empresas.forEach(e => {
+            const opt = document.createElement('option');
+            opt.value = e.id;
+            opt.textContent = e.nombre;
+            select.appendChild(opt);
+        });
+    } catch (error) {
+        console.error('Error loading empresas for clients:', error);
+    }
+}
+
+function showAddClienteModal() {
+    document.getElementById('clienteModalTitle').textContent = 'Añadir Cliente';
+    document.getElementById('editClienteId').value = '';
+    document.getElementById('clienteForm').reset();
+    loadEmpresasForClientes();
+    document.getElementById('clienteModal').style.display = 'block';
+}
+
+function closeClienteModal() {
+    document.getElementById('clienteModal').style.display = 'none';
+}
+
+async function saveCliente(e) {
+    if (e) e.preventDefault();
+    const id = document.getElementById('editClienteId').value;
+    const data = {
+        nombre: document.getElementById('clienteNombre').value,
+        email: document.getElementById('clienteEmail').value,
+        telefono: document.getElementById('clienteTelefono').value,
+        direccion: document.getElementById('clienteDireccion').value,
+        cif: document.getElementById('clienteCIF').value,
+        empresa_id: document.getElementById('clienteEmpresaId').value || null
+    };
+
+    try {
+        const method = id ? 'PUT' : 'POST';
+        const url = id ? `/api/clientes/${id}` : '/api/clientes';
+        const response = await fetch(url, {
+            method,
+            headers: { 'Content-Type': 'application/json', 'csrf-token': csrfToken },
+            body: JSON.stringify(data)
+        });
+
+        if (response.ok) {
+            showNotification(id ? 'Cliente actualizado correctamente' : 'Cliente creado correctamente', 'success');
+            closeClienteModal();
+            loadClientes();
+        } else {
+            const err = await response.json();
+            showNotification('Error: ' + err.error, 'error');
+        }
+    } catch (error) {
+        showNotification('Error: ' + error.message, 'error');
+    }
+}
+
+async function editCliente(id) {
+    try {
+        const response = await fetch(`/api/clientes/${id}`, {
+            headers: { 'csrf-token': csrfToken }
+        });
+        const c = await response.json();
+
+        document.getElementById('clienteModalTitle').textContent = 'Editar Cliente';
+        document.getElementById('editClienteId').value = c.id;
+        document.getElementById('clienteNombre').value = c.nombre;
+        document.getElementById('clienteEmail').value = c.email || '';
+        document.getElementById('clienteTelefono').value = c.telefono || '';
+        document.getElementById('clienteDireccion').value = c.direccion || '';
+        document.getElementById('clienteCIF').value = c.cif || '';
+
+        await loadEmpresasForClientes();
+        document.getElementById('clienteEmpresaId').value = c.empresa_id || '';
+
+        document.getElementById('clienteModal').style.display = 'block';
+    } catch (error) {
+        showNotification('Error al cargar datos del cliente', 'error');
+    }
+}
+
+async function deleteCliente(id) {
+    const confirmed = await showConfirm('¿Estás seguro de que deseas eliminar este cliente?', 'Eliminar Cliente');
+    if (!confirmed) return;
+
+    try {
+        const response = await fetch(`/api/clientes/${id}`, {
+            method: 'DELETE',
+            headers: { 'csrf-token': csrfToken }
+        });
+        if (response.ok) {
+            showNotification('Cliente eliminado correctamente', 'success');
+            loadClientes();
+        } else {
+            const err = await response.json();
+            showNotification('Error: ' + err.error, 'error');
+        }
+    } catch (error) {
+        showNotification('Error: ' + error.message, 'error');
     }
 }
