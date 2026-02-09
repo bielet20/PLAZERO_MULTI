@@ -1,31 +1,33 @@
 # Dockerfile para Producción - Servicios Informáticos
 
 # Etapa 1: Build
-FROM node:18-alpine AS builder
+FROM node:20-alpine AS builder
 
-# Instalar dependencias del sistema necesarias para Puppeteer
+# Instalar dependencias del sistema necesarias para Puppeteer y compilación
 RUN apk add --no-cache \
     chromium \
     nss \
     freetype \
     harfbuzz \
     ca-certificates \
-    ttf-freefont
-
-# Configurar Puppeteer para usar Chromium instalado
-ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
-    PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
+    ttf-freefont \
+    python3 \
+    make \
+    g++
 
 WORKDIR /app
 
 # Copiar package files
 COPY package*.json ./
 
-# Instalar dependencias de producción
-RUN npm ci --only=production
+# Instalar dependencias
+RUN npm ci
+
+# Copiar código y limpiar basura si fuera necesario
+COPY . .
 
 # Etapa 2: Producción
-FROM node:18-alpine
+FROM node:20-alpine
 
 # Instalar Chromium y dependencias necesarias
 RUN apk add --no-cache \
@@ -47,16 +49,12 @@ RUN addgroup -g 1001 -S nodejs && \
 
 WORKDIR /app
 
-# Copiar dependencias desde builder
-COPY --from=builder --chown=nodejs:nodejs /app/node_modules ./node_modules
-
-# Copiar código de la aplicación
-COPY --chown=nodejs:nodejs . .
+# Copiar desde builder
+COPY --from=builder --chown=nodejs:nodejs /app ./
 
 # Crear directorios necesarios con permisos correctos
-RUN mkdir -p .wwebjs_auth && \
-    chown -R nodejs:nodejs .wwebjs_auth && \
-    chown -R nodejs:nodejs /app
+RUN mkdir -p backups data logs .wwebjs_auth && \
+    chown -R nodejs:nodejs backups data logs .wwebjs_auth
 
 # Cambiar a usuario no-root
 USER nodejs
@@ -64,7 +62,7 @@ USER nodejs
 # Exponer puerto
 EXPOSE 3000
 
-# Variables de entorno por defecto (se sobrescriben con .env o docker-compose)
+# Variables de entorno por defecto
 ENV NODE_ENV=production \
     PORT=3000
 
@@ -72,5 +70,8 @@ ENV NODE_ENV=production \
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=5 \
     CMD node -e "require('http').get('http://localhost:3000/api/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"
 
-# Comando de inicio
-CMD ["node", "server.js"]
+# Dar permisos de ejecución al script de entrada
+RUN chmod +x docker-entrypoint.sh
+
+# Comando de inicio: usar el script de entrada
+ENTRYPOINT ["./docker-entrypoint.sh"]

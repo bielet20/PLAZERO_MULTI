@@ -7,6 +7,10 @@ const dbPath = path.join(__dirname, 'tickets.db');
 const dbShmPath = path.join(__dirname, 'tickets.db-shm');
 const dbWalPath = path.join(__dirname, 'tickets.db-wal');
 
+const dataDbPath = path.join(__dirname, 'data', 'tickets.db');
+const dataDbShmPath = path.join(__dirname, 'data', 'tickets.db-shm');
+const dataDbWalPath = path.join(__dirname, 'data', 'tickets.db-wal');
+
 // Create backup with timestamp
 const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
 const backupPath = path.join(__dirname, `tickets.db.backup-${timestamp}`);
@@ -37,6 +41,22 @@ try {
     if (fs.existsSync(dbWalPath)) {
         fs.unlinkSync(dbWalPath);
         console.log('✅ Eliminado: tickets.db-wal');
+    }
+
+    // Step 3: Delete database files in data/ directory
+    if (fs.existsSync(dataDbPath)) {
+        fs.unlinkSync(dataDbPath);
+        console.log('✅ Eliminado: data/tickets.db');
+    }
+
+    if (fs.existsSync(dataDbShmPath)) {
+        fs.unlinkSync(dataDbShmPath);
+        console.log('✅ Eliminado: data/tickets.db-shm');
+    }
+
+    if (fs.existsSync(dataDbWalPath)) {
+        fs.unlinkSync(dataDbWalPath);
+        console.log('✅ Eliminado: data/tickets.db-wal');
     }
 
     console.log('\n✅ Base de datos reseteada exitosamente!');
