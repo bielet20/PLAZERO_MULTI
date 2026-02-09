@@ -9,7 +9,7 @@ const sqlite3 = require('sqlite3').verbose();
 const bcrypt = require('bcryptjs');
 const path = require('path');
 
-const dbPath = path.join(__dirname, 'data', 'tickets.db');
+const dbPath = path.join(__dirname, 'tickets.db');
 
 console.log('🔐 Reseteando credenciales de administrador...\n');
 

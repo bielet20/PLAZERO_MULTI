@@ -2,7 +2,7 @@ const Database = require('better-sqlite3');
 const bcrypt = require('bcryptjs');
 
 // Usar base de datos persistente
-const db = new Database('database.sqlite');
+const db = new Database('tickets.db');
 
 console.log('✅ Usando base de datos PERSISTENTE (tickets.db)');
 
