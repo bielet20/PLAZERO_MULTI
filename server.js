@@ -421,6 +421,7 @@ app.post('/api/tickets', ticketCreationLimiter, csrfProtection, async (req, res)
         const servicio = req.body.servicio;
         const prioridad = req.body.prioridad || 'media';
         const descripcion = sanitizeInput(req.body.descripcion);
+        const direccion = sanitizeInput(req.body.direccion || '');
 
         // Validate required fields
         if (!nombre || !email || !telefono || !servicio || !descripcion) {
@@ -448,6 +449,7 @@ app.post('/api/tickets', ticketCreationLimiter, csrfProtection, async (req, res)
             nombre,
             email,
             telefono,
+            direccion,
             servicio,
             prioridad,
             descripcion
@@ -1256,6 +1258,32 @@ app.post('/api/tickets/:ticketId/invoices', requireAuth, requireAdmin, csrfProte
                 console.error('Error looking up client details for invoice:', err);
             }
 
+            // 4. Strict Validation for New Invoice
+            const missingFields = [];
+
+            // Validate Issuer (Empresa)
+            if (!ticket.empresa_id) {
+                missingFields.push('Empresa emisora (debe asignar una empresa al ticket)');
+            } else {
+                const empresa = await getEmpresaById(ticket.empresa_id);
+                if (!empresa) {
+                    missingFields.push('Datos de la empresa emisora');
+                } else {
+                    if (!empresa.cif) missingFields.push('CIF de la empresa emisora');
+                    if (!empresa.direccion) missingFields.push('Dirección de la empresa emisora');
+                }
+            }
+
+            // Validate Receiver (Cliente)
+            if (!clienteInfo.cif) missingFields.push('CIF del cliente');
+            if (!clienteInfo.direccion) missingFields.push('Dirección del cliente');
+
+            if (missingFields.length > 0) {
+                return res.status(400).json({
+                    error: 'Faltan datos obligatorios para generar la factura: ' + missingFields.join(', ')
+                });
+            }
+
             const invoiceData = {
                 ticket_id: ticketId,
                 empresa_id: ticket.empresa_id || null,
@@ -1374,6 +1402,48 @@ app.get('/api/invoices/:invoiceId', requireAuth, csrfProtection, async (req, res
     }
 });
 
+app.post('/api/tickets/:ticketId/client-data', requireAuth, requireAdmin, csrfProtection, async (req, res) => {
+    try {
+        const { ticketId } = req.params;
+        const { cif, direccion, telefono, email, nombre } = req.body;
+
+        const ticket = await getTicketById(ticketId);
+        if (!ticket) return res.status(404).json({ error: 'Ticket no encontrado' });
+
+        // Find or create client
+        const allClients = await getAllClientes();
+        let client = allClients.find(c =>
+            (ticket.email && c.email && c.email.trim().toLowerCase() === ticket.email.trim().toLowerCase()) ||
+            (ticket.nombre && c.nombre && c.nombre.trim().toLowerCase() === ticket.nombre.trim().toLowerCase())
+        );
+
+        if (client) {
+            await updateCliente(client.id, {
+                cif: cif || client.cif,
+                direccion: direccion || client.direccion,
+                telefono: telefono || client.telefono,
+                email: email || client.email,
+                nombre: nombre || client.nombre
+            });
+        } else {
+            const result = await createCliente({
+                nombre: nombre || ticket.nombre,
+                email: email || ticket.email,
+                telefono: telefono || ticket.telefono,
+                direccion: direccion || '',
+                cif: cif || '',
+                empresa_id: ticket.empresa_id
+            });
+            client = { id: result.id };
+        }
+
+        res.json({ success: true, message: 'Datos del cliente actualizados correctamente', clientId: client.id });
+    } catch (error) {
+        console.error('Error updating client data from ticket:', error);
+        res.status(500).json({ error: 'Error al actualizar los datos del cliente' });
+    }
+});
+
 // Get all invoices
 app.get('/api/facturas', requireAuth, csrfProtection, async (req, res) => {
     try {
@@ -1419,6 +1489,22 @@ app.delete('/api/facturas/:id', requireAuth, requireAdmin, csrfProtection, async
     } catch (error) {
         console.error('Error eliminando factura:', error);
         res.status(error.message.includes('bloqueada') ? 403 : 500).json({ error: error.message });
+    }
+});
+
+// Create Credit Note (Factura de Abono)
+app.post('/api/facturas/:id/abono', requireAuth, requireAdmin, csrfProtection, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const result = await createAbono(id);
+        res.status(201).json({
+            success: true,
+            message: 'Factura de abono creada exitosamente',
+            invoiceId: result.invoiceId
+        });
+    } catch (error) {
+        console.error('Error creando factura de abono:', error);
+        res.status(400).json({ error: error.message });
     }
 });
 
@@ -1547,6 +1633,9 @@ app.post('/api/empresas', requireAuth, requireAdmin, csrfProtection, async (req,
         res.json({ success: true, message: 'Empresa creada exitosamente', id: result.id });
     } catch (error) {
         console.error('Error creando empresa:', error);
+        if (error.message.includes('Ya existe una empresa registrada')) {
+            return res.status(400).json({ error: error.message });
+        }
         res.status(500).json({ error: 'Error creando empresa' });
     }
 });
@@ -1570,6 +1659,9 @@ app.put('/api/empresas/:id', requireAuth, requireAdmin, csrfProtection, async (r
         }
     } catch (error) {
         console.error('Error actualizando empresa:', error);
+        if (error.message.includes('Ya existe otra empresa registrada')) {
+            return res.status(400).json({ error: error.message });
+        }
         res.status(500).json({ error: 'Error actualizando empresa' });
     }
 });
@@ -1610,7 +1702,7 @@ app.post('/api/tickets/:ticketId/transferir-empresa', requireAuth, requireAdmin,
         }
     } catch (error) {
         console.error('Error transfiriendo ticket:', error);
-        res.status(500).json({ error: 'Error transfiriendo ticket' });
+        res.status(400).json({ error: error.message || 'Error transfiriendo ticket' });
     }
 });
 

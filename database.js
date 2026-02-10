@@ -1,10 +1,24 @@
 const Database = require('better-sqlite3');
 const bcrypt = require('bcryptjs');
 
-// Usar base de datos persistente
-const db = new Database('tickets.db');
+// Configuración robusta de la base de datos para macOS/Producción
+const path = require('path');
+const fs = require('fs');
+let dbPath = path.resolve(__dirname, 'tickets.db');
 
-console.log('✅ Usando base de datos PERSISTENTE (tickets.db)');
+try {
+    // Intentar abrir la base de datos en el directorio del proyecto
+    new Database(dbPath, { timeout: 2000 });
+} catch (e) {
+    if (e.code === 'SQLITE_CANTOPEN') {
+        console.warn('⚠️  ERROR DE PERMISOS: macOS está bloqueando el acceso a tickets.db en esta carpeta.');
+        console.warn('⚠️  Usando base de datos temporal en /tmp/tickets_emergencia.db para permitir el inicio.');
+        dbPath = '/tmp/tickets_emergencia.db';
+    }
+}
+
+const db = new Database(dbPath);
+console.log(`✅ Usando base de datos: ${dbPath}`);
 
 // Initialize database
 const initDatabase = () => {
@@ -22,6 +36,7 @@ const initDatabase = () => {
                     nombre TEXT NOT NULL,
                     email TEXT NOT NULL,
                     telefono TEXT NOT NULL,
+                    direccion TEXT,
                     servicio TEXT NOT NULL,
                     prioridad TEXT NOT NULL,
                     descripcion TEXT NOT NULL,
@@ -99,6 +114,13 @@ const initDatabase = () => {
                 )
             `);
 
+            // Añadir índice único para CIF si no existe (para evitar duplicados)
+            try {
+                db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_empresas_cif ON empresas(cif) WHERE cif IS NOT NULL AND cif != '';");
+            } catch (e) {
+                console.warn('⚠️  Aviso: No se pudo crear el índice único de CIF. Es posible que existan registros duplicados que deban ser corregidos.');
+            }
+
             // Create materiales table
             db.exec(`
                 CREATE TABLE IF NOT EXISTS materiales (
@@ -162,6 +184,7 @@ const initDatabase = () => {
                     cliente_telefono TEXT,
                     cliente_direccion TEXT,
                     cliente_cif TEXT,
+                    rectifica_factura_id TEXT,
                     FOREIGN KEY (ticket_id) REFERENCES tickets(ticket_id),
                     FOREIGN KEY (empresa_id) REFERENCES empresas(id)
                 )
@@ -174,6 +197,11 @@ const initDatabase = () => {
                 db.exec('ALTER TABLE facturas ADD COLUMN cliente_telefono TEXT');
                 db.exec('ALTER TABLE facturas ADD COLUMN cliente_direccion TEXT');
                 db.exec('ALTER TABLE facturas ADD COLUMN cliente_cif TEXT');
+            }
+
+            const hasRectifica = facturasInfo.some(c => c.name === 'rectifica_factura_id');
+            if (!hasRectifica) {
+                db.exec('ALTER TABLE facturas ADD COLUMN rectifica_factura_id TEXT');
             }
 
             // Create factura_items table
@@ -421,14 +449,15 @@ const createTicket = (ticketData) => {
     const ticketId = ticketData.ticket_id || `TICK-${Date.now()}`;
 
     const stmt = db.prepare(`
-        INSERT INTO tickets (ticket_id, nombre, email, telefono, servicio, prioridad, descripcion, estado)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO tickets (ticket_id, nombre, email, telefono, direccion, servicio, prioridad, descripcion, estado)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     const result = stmt.run(
         ticketId,
         ticketData.nombre,
         ticketData.email,
         ticketData.telefono,
+        ticketData.direccion || '',
         ticketData.servicio,
         ticketData.prioridad,
         ticketData.descripcion,
@@ -699,6 +728,14 @@ const getEmpresaById = (id) => {
 };
 
 const createEmpresa = (nombre, cif, direccion, telefono, email, verifactu) => {
+    // Verificar si ya existe una empresa con ese CIF
+    if (cif && cif.trim() !== '') {
+        const existing = db.prepare('SELECT id FROM empresas WHERE cif = ?').get(cif);
+        if (existing) {
+            throw new Error(`Ya existe una empresa registrada con el CIF: ${cif}`);
+        }
+    }
+
     const stmt = db.prepare(`
         INSERT INTO empresas (nombre, cif, direccion, telefono, email, verifactu)
         VALUES (?, ?, ?, ?, ?, ?)
@@ -708,6 +745,14 @@ const createEmpresa = (nombre, cif, direccion, telefono, email, verifactu) => {
 };
 
 const updateEmpresa = (id, nombre, cif, direccion, telefono, email, activo, verifactu) => {
+    // Verificar si ya existe otra empresa con ese CIF (excluyendo la actual)
+    if (cif && cif.trim() !== '') {
+        const existing = db.prepare('SELECT id FROM empresas WHERE cif = ? AND id != ?').get(cif, id);
+        if (existing) {
+            throw new Error(`Ya existe otra empresa registrada con el CIF: ${cif}`);
+        }
+    }
+
     const stmt = db.prepare(`
         UPDATE empresas 
         SET nombre = ?, cif = ?, direccion = ?, telefono = ?, email = ?, activo = ?, verifactu = ?
@@ -718,9 +763,22 @@ const updateEmpresa = (id, nombre, cif, direccion, telefono, email, activo, veri
 };
 
 const deleteEmpresa = (id) => {
-    const stmt = db.prepare('DELETE FROM empresas WHERE id = ?');
-    const result = stmt.run(id);
-    return { changes: result.changes };
+    // Check if there are associated tickets or invoices
+    const hasTickets = db.prepare('SELECT COUNT(*) as count FROM tickets WHERE empresa_id = ?').get(id).count > 0;
+    const hasInvoices = db.prepare('SELECT COUNT(*) as count FROM facturas WHERE empresa_id = ?').get(id).count > 0;
+
+    if (hasTickets || hasInvoices) {
+        // Soft delete: just deactivate it so it doesn't show up in selection lists
+        // but preserves history for existing tickets/invoices
+        const stmt = db.prepare('UPDATE empresas SET activo = 0 WHERE id = ?');
+        const result = stmt.run(id);
+        return { changes: result.changes, softDelete: true };
+    } else {
+        // Hard delete: no associations, safe to remove
+        const stmt = db.prepare('DELETE FROM empresas WHERE id = ?');
+        const result = stmt.run(id);
+        return { changes: result.changes, softDelete: false };
+    }
 };
 
 // Materiales functions
@@ -809,8 +867,14 @@ const getAllInvoices = () => {
 const getInvoiceById = (id) => {
     // Check if it's a numeric ID or a factura_id string
     const query = isNaN(id) ?
-        'SELECT f.*, e.cif as emisor_cif FROM facturas f LEFT JOIN empresas e ON f.empresa_id = e.id WHERE f.factura_id = ?' :
-        'SELECT f.*, e.cif as emisor_cif FROM facturas f LEFT JOIN empresas e ON f.empresa_id = e.id WHERE f.id = ?';
+        `SELECT f.*, e.nombre as emisor_nombre, e.cif as emisor_cif, e.direccion as emisor_direccion, e.telefono as emisor_telefono, e.email as emisor_email 
+         FROM facturas f 
+         LEFT JOIN empresas e ON f.empresa_id = e.id 
+         WHERE f.factura_id = ?` :
+        `SELECT f.*, e.nombre as emisor_nombre, e.cif as emisor_cif, e.direccion as emisor_direccion, e.telefono as emisor_telefono, e.email as emisor_email 
+         FROM facturas f 
+         LEFT JOIN empresas e ON f.empresa_id = e.id 
+         WHERE f.id = ?`;
     const stmt = db.prepare(query);
     const invoice = stmt.get(id);
     if (invoice) {
@@ -828,7 +892,7 @@ const getInvoicesByTicketId = (ticketId) => {
 
 const createInvoice = (invoiceData) => {
     const crypto = require('crypto');
-    let { ticket_id, empresa_id, cliente_nombre, cliente_email, cliente_telefono, cliente_direccion, cliente_cif, fecha_vencimiento, subtotal, iva, total, items } = invoiceData;
+    let { ticket_id, empresa_id, cliente_nombre, cliente_email, cliente_telefono, cliente_direccion, cliente_cif, fecha_vencimiento, subtotal, iva, total, items, rectifica_factura_id } = invoiceData;
 
     const invoiceId = generateInvoiceId();
 
@@ -863,13 +927,13 @@ const createInvoice = (invoiceData) => {
             hAnterior = hashAnterior;
         }
 
-        const ticket_id_trimmed = ticket_id.toString().trim();
+        const ticket_id_trimmed = ticket_id ? ticket_id.toString().trim() : null;
         const invoiceStmt = db.prepare(`
-            INSERT INTO facturas (factura_id, ticket_id, empresa_id, cliente_nombre, cliente_email, cliente_telefono, cliente_direccion, cliente_cif, fecha_vencimiento, subtotal, iva, total, hash, hash_anterior)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO facturas (factura_id, ticket_id, empresa_id, cliente_nombre, cliente_email, cliente_telefono, cliente_direccion, cliente_cif, fecha_vencimiento, subtotal, iva, total, hash, hash_anterior, rectifica_factura_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `);
 
-        invoiceStmt.run(invoiceId, ticket_id_trimmed, empresa_id || null, cliente_nombre, cliente_email, cliente_telefono || null, cliente_direccion || null, cliente_cif || null, fecha_vencimiento, subtotal, iva, total, hash, hAnterior);
+        invoiceStmt.run(invoiceId, ticket_id_trimmed, empresa_id || null, cliente_nombre, cliente_email, cliente_telefono || null, cliente_direccion || null, cliente_cif || null, fecha_vencimiento || null, subtotal, iva, total, hash, hAnterior, rectifica_factura_id || null);
 
         const itemStmt = db.prepare(`
             INSERT INTO factura_items (factura_id, concepto, descripcion, cantidad, precio_unitario, total)
@@ -886,6 +950,42 @@ const createInvoice = (invoiceData) => {
     return createTx();
 };
 
+const createAbono = (invoiceId) => {
+    const original = getInvoiceById(invoiceId);
+    if (!original) throw new Error('Factura original no encontrada');
+
+    // We already check if it's blocked in the frontend button, but let's be safe
+    // Actually, only blocked invoices can be credited
+    if (original.presentada !== 1) {
+        throw new Error('Solo se pueden hacer abonos de facturas ya presentadas a la Agencia Tributaria.');
+    }
+
+    const abonoData = {
+        ticket_id: original.ticket_id,
+        empresa_id: original.empresa_id,
+        cliente_nombre: original.cliente_nombre,
+        cliente_email: original.cliente_email,
+        cliente_telefono: original.cliente_telefono,
+        cliente_direccion: original.cliente_direccion,
+        cliente_cif: original.cliente_cif,
+        fecha_vencimiento: original.fecha_vencimiento,
+        rectifica_factura_id: original.factura_id,
+        // Negative items to offset the original
+        items: original.items.map(item => ({
+            concepto: `ABONO: ${item.concepto}`,
+            descripcion: `Rectificación de factura ${original.factura_id}`,
+            cantidad: item.cantidad,
+            precio_unitario: -item.precio_unitario,
+            total: item.cantidad * (-item.precio_unitario)
+        })),
+        subtotal: -original.subtotal,
+        iva: -original.iva,
+        total: -original.total
+    };
+
+    return createInvoice(abonoData);
+};
+
 const updateInvoice = (id, updates) => {
     const crypto = require('crypto');
 
@@ -894,7 +994,7 @@ const updateInvoice = (id, updates) => {
     if (!current) throw new Error('Factura no encontrada');
     if (current.bloqueada === 1) throw new Error('La factura está bloqueada y no se puede modificar');
 
-    const { cliente_nombre, cliente_email, cliente_telefono, cliente_direccion, cliente_cif, fecha_vencimiento, items, estado } = updates;
+    const { cliente_nombre, cliente_email, cliente_telefono, cliente_direccion, cliente_cif, fecha_vencimiento, items, estado, empresa_id } = updates;
 
     const updateTx = db.transaction(() => {
         // Update fields if provided
@@ -908,6 +1008,9 @@ const updateInvoice = (id, updates) => {
         if (cliente_cif !== undefined) { fields.push('cliente_cif = ?'); values.push(cliente_cif); }
         if (fecha_vencimiento !== undefined) { fields.push('fecha_vencimiento = ?'); values.push(fecha_vencimiento); }
         if (estado !== undefined) { fields.push('estado = ?'); values.push(estado); }
+        if (empresa_id !== undefined) { fields.push('empresa_id = ?'); values.push(empresa_id); }
+
+        let currentTotal = current.total;
 
         // Handle items and totals
         if (items && items.length > 0) {
@@ -927,19 +1030,28 @@ const updateInvoice = (id, updates) => {
             }
 
             const iva = subtotal * 0.21; // Standard IVA 21%
-            const total = subtotal + iva;
+            currentTotal = subtotal + iva;
 
             fields.push('subtotal = ?', 'iva = ?', 'total = ?');
-            values.push(subtotal, iva, total);
+            values.push(subtotal, iva, currentTotal);
+        }
 
-            // Recalculate hash if VeriFactu was enabled
-            if (current.hash) {
-                // Ensure emisor_cif is known (using current.emisor_cif from getInvoiceById join)
-                const emisorCif = current.emisor_cif || '';
-                const dataToHash = `${emisorCif}|${current.factura_id}|${total}|${current.fecha_emision}|${current.hash_anterior || ''}`;
+        // Recalculate hash if VeriFactu was enabled OR if empresa_id changed
+        if (current.hash || (empresa_id !== undefined && empresa_id != current.empresa_id)) {
+            // Check if companies involved have verifactu enabled
+            const targetEmpresaId = empresa_id !== undefined ? empresa_id : current.empresa_id;
+            const empresa = db.prepare('SELECT cif, verifactu FROM empresas WHERE id = ?').get(targetEmpresaId);
+
+            if (empresa && empresa.verifactu === 1) {
+                const emisorCif = empresa.cif || '';
+                const dataToHash = `${emisorCif}|${current.factura_id}|${currentTotal}|${current.fecha_emision}|${current.hash_anterior || ''}`;
                 const newHash = crypto.createHash('sha256').update(dataToHash).digest('hex');
-                fields.push('hash = ?');
-                values.push(newHash);
+                fields.push('hash = ?', 'hash_anterior = ?');
+                values.push(newHash, current.hash_anterior || '');
+            } else if (current.hash) {
+                // Was verifactu, now it's not? Or just clearing it.
+                fields.push('hash = ?', 'hash_anterior = ?');
+                values.push(null, null);
             }
         }
 
@@ -1113,9 +1225,25 @@ const deleteAppointment = (id) => {
 const transferirTicketEmpresa = (ticketId, empresaId) => {
     if (!ticketId) return { changes: 0 };
     const trimmedId = ticketId.toString().trim();
-    const stmt = db.prepare('UPDATE tickets SET empresa_id = ?, fecha_actualizacion = CURRENT_TIMESTAMP WHERE ticket_id = ?');
-    const result = stmt.run(empresaId, trimmedId);
-    return { changes: result.changes };
+
+    const transferTx = db.transaction(() => {
+        // 1. Check for presented (locked) invoices associated with this ticket
+        const presentedCount = db.prepare('SELECT COUNT(*) as count FROM facturas WHERE ticket_id = ? AND presentada = 1').get(trimmedId).count;
+
+        if (presentedCount > 0) {
+            throw new Error('No se puede transferir un ticket que ya tiene facturas presentadas a la Agencia Tributaria. Los registros históricos de Veri*Factu no permiten cambiar el emisor una vez informados.');
+        }
+
+        // 2. Update the ticket's company
+        const result = db.prepare('UPDATE tickets SET empresa_id = ?, fecha_actualizacion = CURRENT_TIMESTAMP WHERE ticket_id = ?').run(empresaId, trimmedId);
+
+        // 3. Keep draft invoices synchronized: update their empresa_id to the new one
+        db.prepare('UPDATE facturas SET empresa_id = ? WHERE ticket_id = ? AND presentada = 0').run(empresaId, trimmedId);
+
+        return { changes: result.changes };
+    });
+
+    return transferTx();
 };
 
 // Password reset functions
@@ -1470,6 +1598,8 @@ module.exports = {
     deleteInvoice,
     createMultiTicketInvoice,
     getTicketsForInvoice,
+    createAbono,
+
     // Horas de trabajo
     addHorasTrabajo,
     getHorasTrabajo,

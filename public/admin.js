@@ -133,11 +133,10 @@ async function viewInvoice(invoiceId) {
                     <div class="invoice-premium-header" style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 2rem; border-bottom: 2px solid #2563eb; padding-bottom: 1.5rem;">
                         <div style="display: flex; align-items: center; gap: 1rem;">
                             <div style="background: #2563eb; color: white; width: 48px; height: 48px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 1.5rem;">
-                                <i class="fas fa-wrench"></i>
+                                <i class="fas fa-building"></i>
                             </div>
                             <div>
-                                <h2 style="margin: 0; font-size: 1.5rem; color: #1e40af; letter-spacing: -0.02em;">FONT MULTISERVEIS</h2>
-                                <p style="margin: 0; font-size: 0.9rem; color: #64748b; font-weight: 600;">Y PLAZERO SOLUTIONS</p>
+                                <h2 style="margin: 0; font-size: 1.5rem; color: #1e40af; letter-spacing: -0.02em;">${invoice.emisor_nombre || 'FONT MULTISERVEIS'}</h2>
                             </div>
                         </div>
                         <div style="text-align: right;">
@@ -152,11 +151,11 @@ async function viewInvoice(invoiceId) {
                         <div class="address-box">
                             <h4 style="text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.1em; color: #2563eb; margin: 0 0 0.75rem 0; border-bottom: 1px solid #e5e7eb; padding-bottom: 0.4rem;">Información del Emisor</h4>
                             <div style="font-size: 0.9rem; line-height: 1.6; color: #334155;">
-                                <strong style="color: #1e293b; font-size: 1rem;">FONT MULTISERVEIS Y PLAZERO</strong><br>
-                                CIF: ${invoice.emisor_cif || 'B12345678'}<br>
-                                C/ Ejemplo, 123, 08001 Barcelona<br>
-                                <i class="fas fa-phone" style="font-size: 0.8rem; opacity: 0.7;"></i> 600 123 456<br>
-                                <i class="fas fa-envelope" style="font-size: 0.8rem; opacity: 0.7;"></i> info@fontplazero.com
+                                <strong style="color: #1e293b; font-size: 1rem;">${invoice.emisor_nombre || 'FONT MULTISERVEIS'}</strong><br>
+                                CIF: ${invoice.emisor_cif || '-'}<br>
+                                ${invoice.emisor_direccion || 'C/ Ejemplo, 123, 08001 Barcelona'}<br>
+                                ${invoice.emisor_telefono ? `<i class="fas fa-phone" style="font-size: 0.8rem; opacity: 0.7;"></i> ${invoice.emisor_telefono}<br>` : ''}
+                                ${invoice.emisor_email ? `<i class="fas fa-envelope" style="font-size: 0.8rem; opacity: 0.7;"></i> ${invoice.emisor_email}` : ''}
                             </div>
                         </div>
                         <div class="address-box">
@@ -167,8 +166,7 @@ async function viewInvoice(invoiceId) {
                                 ${invoice.cliente_direccion ? `${invoice.cliente_direccion}<br>` : ''}
                                 ${invoice.cliente_telefono ? `<i class="fas fa-phone" style="font-size: 0.8rem; opacity: 0.7;"></i> ${invoice.cliente_telefono}<br>` : ''}
                                 <i class="fas fa-envelope" style="font-size: 0.8rem; opacity: 0.7;"></i> ${invoice.cliente_email}<br>
-                                ${invoice.empresa_nombre ? `Empresa: ${invoice.empresa_nombre}<br>` : ''}
-                                ${(invoice.empresa_cif && invoice.empresa_cif !== invoice.cliente_cif) ? `CIF Empresa: ${invoice.empresa_cif}<br>` : ''}
+                                ${invoice.rectifica_factura_id ? `<div style="margin-top: 0.5rem; padding: 0.5rem; background: #fee2e2; color: #991b1b; border-radius: 4px; font-weight: 600; font-size: 0.8rem;">RECUPIERA: ${invoice.rectifica_factura_id}</div>` : ''}
                             </div>
                         </div>
                     </div>
@@ -241,6 +239,11 @@ async function viewInvoice(invoiceId) {
             </div>
                     </div>
             <div style="margin-top: 2rem; display: flex; gap: 1rem; justify-content: flex-end; border-top: 1px solid #e5e7eb; padding-top: 1.5rem;" class="no-print">
+                ${invoice.presentada === 1 && !invoice.factura_id.startsWith('ABO-') ? `
+                    <button class="btn" style="background: #ef4444;" onclick="handleCreateAbono(${invoice.id})">
+                        <i class="fas fa-undo"></i> Crear Factura de Abono
+                    </button>
+                ` : ''}
                 <button class="btn" style="background: #3b82f6;" onclick="printInvoice()">
                     <i class="fas fa-print"></i> Imprimir Factura
                 </button>
@@ -1235,7 +1238,10 @@ async function saveEmpresa(event) {
 }
 
 async function deleteEmpresa(id) {
-    const userConfirmed = await showConfirm('¿Está seguro de que desea eliminar esta empresa? Los tickets asociados quedarán sin empresa.', 'Eliminar Empresa');
+    const userConfirmed = await showConfirm(
+        '¿Está seguro de que desea eliminar esta empresa? La empresa se desactivará para preservar el historial de tickets y facturas existentes, pero no aparecerá en nuevas selecciones.',
+        'Eliminar Empresa'
+    );
     if (!userConfirmed) return;
     try {
         const response = await fetch(`/api/empresas/${id}`, { method: 'DELETE', headers: { 'csrf-token': csrfToken } });
@@ -1555,6 +1561,52 @@ async function viewTicket(ticketId) {
         const allMaterials = allMaterialsResponse.ok ? await allMaterialsResponse.json() : [];
         const empresas = empresasResponse.ok ? await empresasResponse.json() : [];
         const invoices = invoicesResponse.ok ? await invoicesResponse.json() : [];
+        const clientsResponse = await fetch('/api/clientes');
+        const allClientsList = clientsResponse.ok ? await clientsResponse.json() : [];
+
+        const matchedClient = allClientsList.find(c =>
+            (ticket.email && c.email && c.email.trim().toLowerCase() === ticket.email.trim().toLowerCase()) ||
+            (ticket.nombre && c.nombre && c.nombre.trim().toLowerCase() === ticket.nombre.trim().toLowerCase())
+        );
+
+        const hasClientDetails = matchedClient && matchedClient.cif && matchedClient.direccion;
+
+        let clientBillingInfoHtml = '';
+        if (matchedClient) {
+            clientBillingInfoHtml = `
+                <div style="background: #f8fafc; border: 1px solid #e2e8f0; padding: 1rem; margin-top: 1rem; border-radius: 6px;">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.5rem;">
+                        <div style="color: #64748b; font-weight: 600; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.025em;">
+                            Datos del Cliente (Facturación)
+                        </div>
+                        <button class="btn" style="background: #e2e8f0; color: #1e293b; padding: 0.25rem 0.5rem; font-size: 0.75rem;" onclick="showBillingDataModal('${ticket.ticket_id}', '${matchedClient.cif || ''}', '${matchedClient.direccion || ''}')">
+                            <i class="fas fa-edit"></i> Editar
+                        </button>
+                    </div>
+                    <div style="font-size: 0.9rem; color: #1e293b;">
+                        <div style="margin-bottom: 0.25rem;"><strong>Nombre:</strong> ${matchedClient.nombre}</div>
+                        <div style="margin-bottom: 0.25rem;"><strong>CIF:</strong> ${matchedClient.cif || '<span style="color: #f97316;">Falta CIF</span>'}</div>
+                        <div><strong>Dirección:</strong> ${matchedClient.direccion || '<span style="color: #f97316;">Falta Dirección</span>'}</div>
+                    </div>
+                    ${!hasClientDetails ? `
+                        <div style="margin-top: 0.75rem; padding: 0.5rem; background: #fff7ed; border-radius: 4px; color: #c2410c; font-size: 0.8rem; display: flex; align-items: center; gap: 0.4rem;">
+                            <i class="fas fa-exclamation-circle"></i> Faltan datos obligatorios para facturar
+                        </div>
+                    ` : ''}
+                </div>
+            `;
+        } else {
+            clientBillingInfoHtml = `
+                <div style="background: #fff7ed; border-left: 4px solid #f97316; padding: 1rem; margin-top: 1rem; border-radius: 4px;">
+                    <p style="color: #c2410c; margin: 0; font-size: 0.875rem;">
+                        El cliente no está registrado. Se necesita Nombre, CIF y Dirección para facturar.
+                    </p>
+                    <button class="btn" style="background: #f97316; margin-top: 0.75rem; width: 100%; font-size: 0.875rem;" onclick="showBillingDataModal('${ticket.ticket_id}', '', '')">
+                        <i class="fas fa-plus"></i> Registrar Datos de Facturación
+                    </button>
+                </div>
+            `;
+        }
 
         const operatives = users.filter(u => u.rol === 'tecnico' && u.activo);
 
@@ -1671,6 +1723,10 @@ async function viewTicket(ticketId) {
                     <div class="detail-row">
                         <div class="detail-label">Teléfono</div>
                         <div>${ticket.telefono}</div>
+                    </div>
+                    <div class="detail-row">
+                        <div class="detail-label">Dirección</div>
+                        <div>${ticket.direccion || 'No especificada'}</div>
                     </div>
                     <div class="detail-row">
                         <div class="detail-label">Servicio</div>
@@ -1819,6 +1875,7 @@ async function viewTicket(ticketId) {
 
                     <div class="notes-section" style="border-top: 2px solid #065f46; background: #d1fae5;">
                         <h3><i class="fas fa-file-invoice-dollar"></i> Facturación</h3>
+                        ${clientBillingInfoHtml}
                         <div id="invoiceList" style="margin-top: 1rem; max-height: 250px; overflow-y: auto;">
                             ${invoicesHtml}
                         </div>
@@ -2195,6 +2252,7 @@ async function editTicket(ticketId) {
         document.getElementById('editTicketNombre').value = ticket.nombre;
         document.getElementById('editTicketEmail').value = ticket.email;
         document.getElementById('editTicketTelefono').value = ticket.telefono;
+        document.getElementById('editTicketDireccion').value = ticket.direccion || '';
         document.getElementById('editTicketServicio').value = ticket.servicio;
         document.getElementById('editTicketEmpresa').value = ticket.empresa_id || '';
         document.getElementById('editTicketPrioridad').value = ticket.prioridad;
@@ -2216,6 +2274,7 @@ async function saveTicketEdit() {
     const nombre = document.getElementById('editTicketNombre').value;
     const email = document.getElementById('editTicketEmail').value;
     const telefono = document.getElementById('editTicketTelefono').value;
+    const direccion = document.getElementById('editTicketDireccion').value;
     const servicio = document.getElementById('editTicketServicio').value;
     const descripcion = document.getElementById('editTicketDescripcion').value;
 
@@ -2228,6 +2287,7 @@ async function saveTicketEdit() {
         nombre,
         email,
         telefono,
+        direccion,
         servicio,
         empresa_id: empresaId ? parseInt(empresaId) : null,
         prioridad: document.getElementById('editTicketPrioridad').value,
@@ -2357,6 +2417,7 @@ async function saveNewTicket() {
     const nombre = document.getElementById('createTicketNombre').value;
     const email = document.getElementById('createTicketEmail').value;
     const telefono = document.getElementById('createTicketTelefono').value;
+    const direccion = document.getElementById('createTicketDireccion').value;
     const servicio = document.getElementById('createTicketServicio').value;
     const descripcion = document.getElementById('createTicketDescripcion').value;
 
@@ -2369,6 +2430,7 @@ async function saveNewTicket() {
         nombre,
         email,
         telefono,
+        direccion,
         servicio,
         empresa_id: empresaId ? parseInt(empresaId) : null,
         prioridad: document.getElementById('createTicketPrioridad').value,
@@ -3096,7 +3158,7 @@ function printAppointmentsAgenda() {
     printWindow.document.write(`
         <html>
             <head>
-                <title>Agenda de Citas - FONT MULTISERVEIS Y PLAZERO</title>
+                <title>Agenda de Citas - FONT MULTISERVEIS</title>
                 <style>
                     body { font-family: 'Segoe UI', sans-serif; padding: 20px; color: #333; }
                     .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #2563eb; padding-bottom: 15px; margin-bottom: 30px; }
@@ -3118,7 +3180,7 @@ function printAppointmentsAgenda() {
             </head>
             <body>
                 <div class="header">
-                    <div class="logo">FONT MULTISERVEIS Y PLAZERO</div>
+                    <div class="logo">FONT MULTISERVEIS</div>
                     <div>
                         <h1>AGENDA DE CITAS</h1>
                         <div class="date">${dateStr}</div>
@@ -3126,7 +3188,7 @@ function printAppointmentsAgenda() {
                 </div>
                 ${table.outerHTML}
                 <div style="margin-top: 40px; text-align: center; color: #999; font-size: 12px;">
-                    © 2026 FONT MULTISERVEIS Y PLAZERO - Documento generado automáticamente
+                    © 2026 FONT MULTISERVEIS - Documento generado automáticamente
                 </div>
             </body>
         </html>
@@ -3766,5 +3828,79 @@ async function deleteCliente(id) {
         }
     } catch (error) {
         showNotification('Error: ' + error.message, 'error');
+    }
+}
+
+
+function showBillingDataModal(ticketId, currentCIF, currentDireccion) {
+    document.getElementById('billingDataTicketId').value = ticketId;
+    document.getElementById('billingDataCIF').value = currentCIF || '';
+    document.getElementById('billingDataDireccion').value = currentDireccion || '';
+    document.getElementById('billingDataModal').style.display = 'block';
+}
+
+function closeBillingDataModal() {
+    document.getElementById('billingDataModal').style.display = 'none';
+}
+
+async function saveBillingDataUpdate() {
+    const ticketId = document.getElementById('billingDataTicketId').value;
+    const cif = document.getElementById('billingDataCIF').value;
+    const direccion = document.getElementById('billingDataDireccion').value;
+
+    if (!cif || !direccion) {
+        showNotification('CIF y Dirección son obligatorios', 'warning');
+        return;
+    }
+
+    try {
+        const response = await fetch(`/api/tickets/${ticketId}/client-data`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'csrf-token': csrfToken },
+            body: JSON.stringify({ cif, direccion })
+        });
+
+        if (response.ok) {
+            showNotification('Datos de facturación actualizados', 'success');
+            closeBillingDataModal();
+            viewTicket(ticketId); // Refresh view
+        } else {
+            const error = await response.json();
+            showNotification('Error: ' + error.error, 'error');
+        }
+    } catch (error) {
+        console.error('Error in billing data update:', error);
+        showNotification('Error al actualizar los datos', 'error');
+    }
+}
+
+async function handleCreateAbono(invoiceId) {
+    const confirmed = await showConfirm(
+        '¿Estás seguro de que deseas crear una factura de abono para rectificar esta factura? Se generará un nuevo registro con cantidades negativas.',
+        'Crear Factura de Abono'
+    );
+
+    if (!confirmed) return;
+
+    try {
+        const response = await fetch(`/api/facturas/${invoiceId}/abono`, {
+            method: 'POST',
+            headers: {
+                'csrf-token': csrfToken
+            }
+        });
+
+        const result = await response.json();
+
+        if (response.ok) {
+            showNotification('Factura de abono creada exitosamente', 'success');
+            // View the new invoice
+            viewInvoice(result.invoiceId);
+        } else {
+            showNotification(result.error || 'Error al crear factura de abono', 'error');
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        showNotification('Error al crear factura de abono', 'error');
     }
 }

@@ -53,6 +53,7 @@ ticketForm.addEventListener('submit', async (e) => {
     const nombre = document.getElementById('nombre').value;
     const email = document.getElementById('email').value;
     const telefono = document.getElementById('telefono').value;
+    const direccion = document.getElementById('direccion').value;
     const servicio = document.getElementById('servicio').value;
     const descripcion = document.getElementById('descripcion').value;
 
@@ -67,6 +68,7 @@ ticketForm.addEventListener('submit', async (e) => {
         nombre,
         email,
         telefono,
+        direccion,
         servicio,
         prioridad: document.getElementById('prioridad').value,
         descripcion
