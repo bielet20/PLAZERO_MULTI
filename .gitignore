@@ -1,10 +1,14 @@
 # Dependencies
 node_modules/
 
-# Environment variables
+# Environment variables - NUNCA commitear archivos con credenciales
 .env
+.env.*
+!.env.example
 .env.local
 .env.development
+.env.docker
+.env.production
 
 # Database
 *.db
