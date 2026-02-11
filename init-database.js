@@ -40,7 +40,10 @@ const db = new sqlite3.Database(dbPath, sqlite3.OPEN_READWRITE | sqlite3.OPEN_CR
         console.log('✅ Tabla usuarios creada\n');
 
         const username = 'admin';
-        const password = 'admin123';
+        const password = process.env.ADMIN_SETUP_PASSWORD || 'admin123';
+        if (!process.env.ADMIN_SETUP_PASSWORD) {
+            console.warn('⚠️  Usando contraseña por defecto "admin123". Define ADMIN_SETUP_PASSWORD en .env para mayor seguridad.');
+        }
         const passwordHash = await bcrypt.hash(password, 10);
 
         db.run(

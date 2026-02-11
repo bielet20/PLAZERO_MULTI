@@ -23,7 +23,10 @@ const db = new sqlite3.Database(dbPath, (err) => {
 
 // Credenciales a establecer
 const username = 'admin';
-const password = 'admin123';
+const password = process.env.ADMIN_SETUP_PASSWORD || 'admin123';
+if (!process.env.ADMIN_SETUP_PASSWORD) {
+    console.warn('⚠️  Usando contraseña por defecto "admin123". Define ADMIN_SETUP_PASSWORD en .env para mayor seguridad.');
+}
 const nombreCompleto = 'Administrador';
 const email = 'admin@local';
 const rol = 'admin';

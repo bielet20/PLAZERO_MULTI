@@ -42,7 +42,10 @@ try {
 
     // Crear usuario admin
     const username = 'admin';
-    const password = 'admin123';
+    const password = process.env.ADMIN_SETUP_PASSWORD || 'admin123';
+    if (!process.env.ADMIN_SETUP_PASSWORD) {
+        console.warn('⚠️  Usando contraseña por defecto "admin123". Define ADMIN_SETUP_PASSWORD en .env para mayor seguridad.');
+    }
     const passwordHash = bcrypt.hashSync(password, 10);
 
     const insert = db.prepare('INSERT INTO usuarios (username, password_hash, nombre_completo, email, rol) VALUES (?, ?, ?, ?, ?)');
